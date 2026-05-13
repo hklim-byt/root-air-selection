@@ -10,20 +10,19 @@ from io import BytesIO
 # 페이지 설정
 st.set_page_config(page_title="루트에어 송풍기 선정", layout="wide")
 
-# 1. 상단 레이아웃 (로고 및 타이틀)
+# 1. 상단 레이아웃
 col_logo, col_title = st.columns([1, 4])
 with col_logo:
     if os.path.exists("logo.png"):
         st.image("logo.png", width=250)
     else:
         st.title("🏢")
-
 with col_title:
     st.markdown("###")
     st.title("루트에어 송풍기 선정 프로그램")
-    st.write("Root Air Fan Selection System V1.9")
+    st.write("Root Air Fan Selection System V2.0 (Noise Analysis Included)")
 
-# 2. 데이터 불러오기 함수
+# 2. 데이터 로드
 def load_my_data():
     file_name = 'fan_data.csv'
     if not os.path.exists(file_name): return None
@@ -35,117 +34,143 @@ def load_my_data():
 
 df = load_my_data()
 
-# 3. 그래프 생성 함수
-def create_fan_chart(all_df, user_cmh, user_pa):
-    fig, ax = plt.subplots(figsize=(10, 6))
+# 3. 그래프 생성 함수 (성능 곡선)
+def create_performance_chart(all_df, user_cmh, user_pa):
+    fig, ax = plt.subplots(figsize=(8, 5))
     unique_models = all_df.iloc[:, 0].unique()
     for model in unique_models:
-        model_data = all_df[all_df.iloc[:, 0] == model]
-        model_data = model_data.sort_values(by=all_df.columns[3])
-        ax.plot(model_data.iloc[:, 3], model_data.iloc[:, 5], marker='o', markersize=4, label=f"Curve: {model}", linewidth=2)
+        model_data = all_df[all_df.iloc[:, 0] == model].sort_values(by=all_df.columns[3])
+        ax.plot(model_data.iloc[:, 3], model_data.iloc[:, 5], marker='o', markersize=3, label=model, alpha=0.7)
     
-    ax.scatter(user_cmh, user_pa, color='red', s=150, label='Design Point', zorder=10)
-    ax.axhline(user_pa, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
-    ax.axvline(user_cmh, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
-    
+    ax.scatter(user_cmh, user_pa, color='red', s=100, label='Design Point', zorder=10)
+    ax.axhline(user_pa, color='red', linestyle='--', linewidth=1, alpha=0.5)
+    ax.axvline(user_cmh, color='red', linestyle='--', linewidth=1, alpha=0.5)
     ax.set_xlabel('Air Flow (CMH)')
     ax.set_ylabel('Static Pressure (Pa)')
-    ax.set_title('Fan Performance Selection Chart')
-    ax.grid(True, linestyle=':', alpha=0.6)
-    ax.legend()
-
-    img_buf = BytesIO()
-    plt.savefig(img_buf, format='png', dpi=200)
-    img_buf.seek(0)
+    ax.set_title('Performance Curve')
+    ax.legend(fontsize='small')
+    
+    buf = BytesIO()
+    plt.savefig(buf, format='png', dpi=150)
+    buf.seek(0)
     plt.close(fig)
-    return img_buf
+    return buf
 
-# 4. PDF 생성 함수 (영문 리포트 전용)
-def create_pdf(model_info, user_cmh, user_pa, chart_buf, project_info):
+# 4. 그래프 생성 함수 (소음 옥타브 밴드)
+def create_noise_chart(noise_data):
+    # 주파수 대역 이름
+    bands = ['63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz']
+    values = noise_data[bands].values[0]
+    
+    fig, ax = plt.subplots(figsize=(8, 4))
+    bars = ax.bar(bands, values, color='skyblue', edgecolor='navy')
+    ax.set_ylim(0, max(values) + 15)
+    ax.set_ylabel('Sound Pressure Level (dB)')
+    ax.set_title('Octave Band Noise Spectrum')
+    
+    # 막대 위에 숫자 표시
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height + 1, f'{int(height)}', ha='center', va='bottom')
+    
+    buf = BytesIO()
+    plt.savefig(buf, format='png', dpi=150)
+    buf.seek(0)
+    plt.close(fig)
+    return buf
+
+# 5. PDF 생성 함수
+def create_pdf(model_info, user_cmh, user_pa, perf_buf, noise_buf, project_info):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
+    w, h = A4
     
-    p.setFont("Helvetica-Bold", 20)
-    p.drawString(50, height - 50, "Fan Selection Report")
-    p.line(50, height - 65, 550, height - 65)
+    # 제목 및 정보
+    p.setFont("Helvetica-Bold", 18)
+    p.drawString(50, h - 50, "Technical Selection Report")
+    p.line(50, h - 65, 550, h - 65)
     
+    p.setFont("Helvetica", 10)
+    p.drawString(50, h - 85, f"Project: {project_info['project']}")
+    p.drawString(50, h - 100, f"Customer: {project_info['customer']}")
+    p.drawString(50, h - 115, f"Engineer: {project_info['manager']}")
+    
+    # 기술 정보
     p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, height - 90, "[ Project Information ]")
-    p.setFont("Helvetica", 11)
-    p.drawString(60, height - 110, f"- Project Name: {project_info['project']}")
-    p.drawString(60, height - 130, f"- Customer: {project_info['customer']}")
-    p.drawString(60, height - 150, f"- Prepared by: {project_info['manager']}")
+    p.drawString(50, h - 145, "[1] Technical Specifications")
+    p.setFont("Helvetica", 10)
+    p.drawString(60, h - 165, f"- Model: {model_info.iloc[0]}")
+    p.drawString(60, h - 180, f"- Duty: {user_cmh} CMH @ {user_pa} Pa")
+    p.drawString(60, h - 195, f"- Power: {model_info.iloc[6]} kW")
     
+    # 소음 데이터 표 (Octave Band)
     p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, height - 180, "[ Technical Specifications ]")
-    p.setFont("Helvetica", 11)
-    p.drawString(60, height - 200, f"- Design Point: {user_cmh} CMH / {user_pa} Pa")
-    p.drawString(60, height - 220, f"- Selected Model: {model_info.iloc[0]}")
-    p.drawString(60, height - 240, f"- Motor Power: {model_info.iloc[6]} kW")
+    p.drawString(50, h - 225, "[2] Noise Data (Octave Band)")
+    p.setFont("Helvetica", 9)
+    bands = ['63', '125', '250', '500', '1k', '2k', '4k', '8k', 'Total']
+    # 표 헤더
+    for i, b in enumerate(bands):
+        p.drawString(60 + (i*55), h - 245, b)
+    # 표 데이터 (CSV 컬럼 위치에 맞춰 조정 필요)
+    noise_vals = model_info.iloc[-9:].values # 마지막 9개 컬럼이 소음 데이터라고 가정
+    for i, v in enumerate(noise_vals):
+        p.drawString(60 + (i*55), h - 260, str(v))
     
-    img = ImageReader(chart_buf)
-    p.drawImage(img, 50, height - 600, width=500, height=330)
+    # 그래프 삽입 (성능 곡선)
+    p.drawImage(ImageReader(perf_buf), 50, h - 500, width=240, height=180)
+    # 그래프 삽입 (소음 곡선)
+    p.drawImage(ImageReader(noise_buf), 300, h - 500, width=240, height=180)
     
     p.showPage()
     p.save()
     buffer.seek(0)
     return buffer
 
-# 5. 메인 로직
+# 6. 메인 화면
 if df is not None:
     st.divider()
+    st.subheader("📋 Project Info (English Only)")
+    c1, c2, c3 = st.columns(3)
+    p_name = c1.text_input("Project Name", placeholder="e.g. P4 Project")
+    c_name = c2.text_input("Customer", placeholder="e.g. K-ENSOL")
+    m_name = c3.text_input("Manager", placeholder="e.g. J.H. KIM")
     
-    # 영문 작성 안내 가이드
-    st.subheader("📋 Project Information")
-    st.info("⚠️ To prevent character corruption in the PDF, please enter all fields in **English**.")
-    
-    row1_col1, row1_col2, row1_col3 = st.columns(3)
-    with row1_col1:
-        project_name = st.text_input("Project Name", placeholder="e.g. 00 Plant Extension")
-    with row1_col2:
-        customer_name = st.text_input("Customer", placeholder="e.g. Root Air Co., Ltd.")
-    with row1_col3:
-        manager_name = st.text_input("Prepared by (Manager)", placeholder="e.g. Gildong Hong")
-
-    st.subheader("🔍 Design Conditions")
+    st.subheader("🔍 Selection")
     c1, c2 = st.columns(2)
-    with c1:
-        user_cmh = st.number_input("Required Flow (CMH)", value=120000, step=1000)
-    with c2:
-        user_pa = st.number_input("Required Static Pressure (Pa)", value=2400, step=10)
+    u_cmh = c1.number_input("Flow (CMH)", value=120000, step=1000)
+    u_pa = c2.number_input("Pressure (Pa)", value=2400, step=10)
 
-    # 선정 로직
-    matched_fans = df[(df.iloc[:, 3] >= user_cmh) & (df.iloc[:, 5] >= user_pa)].copy()
+    matched = df[(df.iloc[:, 3] >= u_cmh) & (df.iloc[:, 5] >= u_pa)].copy()
 
-    if not matched_fans.empty:
-        best_ones = matched_fans.sort_values(by=[df.columns[3], df.columns[5]])
-        st.success(f"Successfully found {len(best_ones)} operation points!")
+    if not matched.empty:
+        best = matched.sort_values(by=[df.columns[3], df.columns[5]]).iloc[0]
+        st.success(f"Recommended Model: {best.iloc[0]}")
         
-        top_model = best_ones.iloc[0]
-        chart_img = create_fan_chart(df, user_cmh, user_pa)
+        # 그래프 생성
+        perf_img = create_performance_chart(df, u_cmh, u_pa)
+        # 소음 컬럼이 있는지 확인 후 그래프 생성
+        has_noise = '63Hz' in df.columns
         
-        project_info = {
-            "project": project_name if project_name else "N/A",
-            "customer": customer_name if customer_name else "N/A",
-            "manager": manager_name if manager_name else "N/A"
-        }
+        col1, col2 = st.columns(2)
+        with col1:
+            st.image(perf_img, caption="Performance Curve")
+        with col2:
+            if has_noise:
+                noise_img = create_noise_chart(pd.DataFrame([best]))
+                st.image(noise_img, caption="Noise Spectrum")
+            else:
+                st.warning("No noise data found in CSV.")
 
-        st.divider()
-        st.subheader("📈 Performance Curve")
-        st.image(chart_img, use_container_width=True)
+        # 소음 테이블 출력
+        if has_noise:
+            st.subheader("🔊 Noise Data (dB)")
+            noise_bands = ['63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', 'Total_dB']
+            st.table(pd.DataFrame([best[noise_bands]]))
 
-        pdf_buf = create_pdf(top_model, user_cmh, user_pa, chart_img, project_info)
-        st.download_button(
-            label="📥 Download Selection Report (PDF)",
-            data=pdf_buf,
-            file_name=f"Report_{project_name}.pdf" if project_name else "Report.pdf",
-            mime="application/pdf"
-        )
-        
-        st.dataframe(best_ones, use_container_width=True)
+        # PDF 다운로드
+        proj_info = {"project": p_name, "customer": c_name, "manager": m_name}
+        if has_noise:
+            pdf_data = create_pdf(best, u_cmh, u_pa, perf_img, noise_img, proj_info)
+            st.download_button("📥 Download Report (PDF)", pdf_data, f"Report_{p_name}.pdf", "application/pdf")
     else:
-        st.warning("⚠️ No matching models found.")
-
-    with st.expander("📂 View Database"):
-        st.write(df)
+        st.warning("No matching model.")
