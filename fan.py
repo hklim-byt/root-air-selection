@@ -5,13 +5,12 @@ import matplotlib.pyplot as plt
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
-from reportlab.lib import colors
 from io import BytesIO
 import numpy as np
 from datetime import datetime
 
 # 페이지 설정
-st.set_page_config(page_title="루트에어 종합 선정 시스템 V5.2", layout="wide")
+st.set_page_config(page_title="루트에어 종합 선정 시스템 V5.3", layout="wide")
 
 # 1. 상단 레이아웃
 col_logo, col_title = st.columns([1, 4])
@@ -22,14 +21,14 @@ with col_logo:
         st.title("🏢")
 with col_title:
     st.markdown("###")
-    st.title("루트에어 송풍기 선정 시스템 V5.2")
-    st.write("Graph Alignment & Layout Optimization")
+    st.title("루트에어 송풍기 선정 시스템 V5.3")
+    st.write("Centered Performance Map & Extended Data Visualization")
 
-# 2. 데이터 로드
+# 2. 데이터 로드 (확장판 샘플 파일)
 def load_my_data():
-    file_name = 'fan_performance_map_full_sample.csv'
+    file_name = 'fan_performance_map_extended.csv' # 확장된 데이터 파일
     if not os.path.exists(file_name):
-        file_name = 'fan_data_filled.csv'
+        file_name = 'fan_performance_map_full_sample.csv'
         if not os.path.exists(file_name): return None
     try:
         df = pd.read_csv(file_name, encoding='utf-8-sig')
@@ -37,7 +36,7 @@ def load_my_data():
         df = pd.read_csv(file_name, encoding='cp949')
     return df
 
-# 3. 종합 성능 맵 생성 (그래프 중앙 정렬 로직 추가)
+# 3. 종합 성능 맵 생성 (중앙 정렬 및 바닥부터 시작하는 로직)
 def create_combined_chart(all_df, selected_model, user_cmh, user_pa):
     model_df = all_df[all_df['model_name'] == selected_model].sort_values(by=['rpm', 'CMH'])
     rpms = sorted(model_df['rpm'].unique())
@@ -48,14 +47,10 @@ def create_combined_chart(all_df, selected_model, user_cmh, user_pa):
     distinct_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
     surge_x, surge_y = [], []
 
-    # 데이터의 실제 최대값 확인
-    max_data_cmh = model_df['CMH'].max()
-    max_data_pa = model_df['Pa'].max()
-
     for i, rpm in enumerate(rpms):
         data = model_df[model_df['rpm'] == rpm]
         color = distinct_colors[i % len(distinct_colors)]
-        ax1.plot(data['CMH'], data['Pa'], color=color, label=f'{rpm} rpm', linewidth=2)
+        ax1.plot(data['CMH'], data['Pa'], color=color, label=f'{rpm} rpm', linewidth=2, alpha=0.9)
         surge_x.append(data['CMH'].iloc[0])
         surge_y.append(data['Pa'].iloc[0])
         ax1.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {rpm}', color=color, fontsize=9, va='center', fontweight='bold')
@@ -64,26 +59,26 @@ def create_combined_chart(all_df, selected_model, user_cmh, user_pa):
     ax1.plot(surge_x, surge_y, 'r--', linewidth=2, label='Surge Line')
     ax1.fill_betweenx(surge_y, 0, surge_x, color='red', alpha=0.05)
     
-    # [수정] 그래프 중앙 정렬 로직
-    # 입력값과 데이터 최대값 중 큰 것을 기준으로 범위를 설정하여 여백 확보
-    limit_cmh = max(user_cmh * 1.3, max_data_cmh * 1.1)
-    limit_pa = max(user_pa * 1.3, max_data_pa * 1.1)
+    # [핵심] 설계점이 정중앙에 오도록 축 범위 최적화
+    # 설계점을 중심으로 좌우/상하 대칭에 가까운 여백을 줌
+    x_limit = max(user_cmh * 1.6, model_df['CMH'].max() * 1.1)
+    y_limit = max(user_pa * 1.6, model_df['Pa'].max() * 1.1)
     
-    ax1.set_xlim(0, limit_cmh)
-    ax1.set_ylim(0, limit_pa)
-    ax2.set_ylim(0, 100) # 효율은 100% 기준으로 고정
+    ax1.set_xlim(0, x_limit)
+    ax1.set_ylim(0, y_limit)
+    ax2.set_ylim(0, 100)
 
     # 선정 지점 표시 (붉은 십자선 + 동그라미)
-    ax1.axhline(user_pa, color='red', linestyle='-', linewidth=1.2, alpha=0.7, zorder=25)
-    ax1.axvline(user_cmh, color='red', linestyle='-', linewidth=1.2, alpha=0.7, zorder=25)
+    ax1.axhline(user_pa, color='red', linestyle='-', linewidth=1.2, alpha=0.6, zorder=25)
+    ax1.axvline(user_cmh, color='red', linestyle='-', linewidth=1.2, alpha=0.6, zorder=25)
     ax1.scatter(user_cmh, user_pa, color='red', s=150, edgecolors='white', marker='o', linewidths=2, zorder=30, label='Design Point')
 
     ax1.set_xlabel('Air Flow (CMH)', fontsize=12)
     ax1.set_ylabel('Static Pressure (Pa)', fontsize=12)
-    ax1.set_title(f"Performance Map: {selected_model}", fontsize=16, fontweight='bold', pad=20)
+    ax1.set_title(f"Comprehensive Performance Map: {selected_model}", fontsize=16, fontweight='bold', pad=20)
     
     h1, l1 = ax1.get_legend_handles_labels()
-    ax1.legend(h1, l1, loc='upper right', fontsize='small')
+    ax1.legend(h1, l1, loc='upper right', fontsize='small', frameon=True)
     ax1.grid(True, linestyle=':', alpha=0.6)
     
     plt.tight_layout()
@@ -93,7 +88,7 @@ def create_combined_chart(all_df, selected_model, user_cmh, user_pa):
     plt.close(fig)
     return buf
 
-# 4. 소음 그래프 (V5.1 유지)
+# 4. 소음 그래프
 def create_noise_chart(noise_row):
     bands_labels = ['63', '125', '250', '500', '1k', '2k', '4k', '8k']
     plot_values = []
@@ -121,7 +116,7 @@ def create_noise_chart(noise_row):
     plt.close(fig)
     return buf
 
-# 5. PDF 생성 함수 (V5.1 레이아웃 유지)
+# 5. PDF 생성 (V3.2 레이아웃 스타일)
 def draw_table(p, x, y, headers, data):
     cell_width = 54
     cell_height = 25
@@ -149,7 +144,7 @@ def create_pdf(model_info, user_cmh, user_pa, combined_buf, noise_buf, project_i
     p.drawString(50, h - 90, f"Project: {project_info['project']}")
     p.drawString(50, h - 105, f"Customer: {project_info['customer']}")
     p.drawString(50, h - 120, f"Engineer: {project_info['manager']}")
-    p.drawString(50, h - 135, f"Date: {project_info['date']}")
+    p.drawString(50, h - 130, f"Date: {project_info['date']}")
     
     p.setFont("Helvetica-Bold", 14)
     p.drawString(50, h - 170, "[1] Technical Specifications")
@@ -209,7 +204,7 @@ if df is not None:
 
     selected_model = st.selectbox("Model Select", df['model_name'].unique())
     
-    # 맵 생성 (중앙 정렬 로직 적용)
+    # 맵 생성 (V5.3 중앙 정렬 및 확장 데이터 적용)
     combined_img = create_combined_chart(df, selected_model, u_cmh, u_pa)
     st.image(combined_img)
     
@@ -225,6 +220,6 @@ if df is not None:
     }
     
     pdf_data = create_pdf(best_row, u_cmh, u_pa, combined_img, noise_img, proj_info)
-    st.download_button("📥 Download Technical Selection Report (V5.2)", pdf_data, f"Report_{p_name}.pdf")
+    st.download_button("📥 Download Final Technical Selection Report (V5.3)", pdf_data, f"Report_{p_name}.pdf")
 else:
     st.error("데이터 파일을 로드할 수 없습니다.")
