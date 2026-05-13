@@ -23,13 +23,12 @@ with col_logo:
 with col_title:
     st.markdown("###")
     st.title("루트에어 송풍기 선정 프로그램")
-    st.write("Root Air Fan Selection System V3.1")
+    st.write("Root Air Fan Selection System V3.2")
 
-# 2. 데이터 로드 (새로운 파일명 적용)
+# 2. 데이터 로드
 def load_my_data():
     file_name = 'fan_data_filled.csv'
     if not os.path.exists(file_name):
-        # 백업용으로 기존 파일명도 체크
         file_name = 'fan_data.csv'
         if not os.path.exists(file_name): return None
     try:
@@ -66,7 +65,6 @@ def create_noise_chart(noise_row, bands):
     plot_values = []
     for b in bands:
         val = str(noise_row[b])
-        # "105.2 / 79.2" 형식에서 앞의 dB 값만 추출
         first_val = val.split('/')[0].strip()
         try: plot_values.append(float(first_val))
         except: plot_values.append(0.0)
@@ -87,7 +85,7 @@ def create_noise_chart(noise_row, bands):
     plt.close(fig)
     return buf
 
-# 5. PDF 생성 함수 (V3.1)
+# 5. PDF 생성 함수 (V3.2: 효율 세분화 및 P fan kW 반영)
 def draw_table(p, x, y, headers, data):
     cell_width = 54
     cell_height = 25
@@ -126,11 +124,16 @@ def create_pdf(model_info, user_cmh, user_pa, perf_buf, noise_buf, project_info,
     p.drawString(60, h - 235, f"- Operation RPM: {model_info['rpm']} rpm")
     p.drawString(60, h - 255, f"- Design Duty: {user_cmh} CMH @ {user_pa} Pa")
     
-    eff = model_info['total efficiency (%)']
-    p.drawString(60, h - 275, f"- Total Efficiency: {eff} %")
-    p.drawString(60, h - 295, f"- Motor Power: {model_info['power (kW)']} kW")
+    # 효율 2종 표시
+    total_eff = model_info['total efficiency (%)']
+    static_eff = model_info['static pressure efficiency (%)']
+    p.drawString(60, h - 275, f"- Total Efficiency: {total_eff} %")
+    p.drawString(60, h - 295, f"- Static Pressure Efficiency: {static_eff} %")
     
-    p.drawImage(ImageReader(perf_buf), 50, h - 700, width=500, height=380)
+    # Motor Power -> P fan (kW) 변경
+    p.drawString(60, h - 315, f"- P fan: {model_info['power (kW)']} kW")
+    
+    p.drawImage(ImageReader(perf_buf), 50, h - 710, width=500, height=380)
     p.showPage()
     
     # --- PAGE 2 ---
@@ -170,19 +173,16 @@ if df is not None:
     u_cmh = c1.number_input("Flow (CMH)", value=120000, step=1000)
     u_pa = c2.number_input("Pressure (Pa)", value=2400, step=10)
 
-    # 선정 필터링 (CMH와 Pa 기준)
     matched = df[(df['CMH'] >= u_cmh) & (df['Pa'] >= u_pa)].copy()
 
     if not matched.empty:
         best = matched.sort_values(by=['CMH', 'Pa']).iloc[0]
         st.success(f"Best Match: **{best['model_name']}** (RPM: {best['rpm']})")
         
-        # 정보 요약 표시
-        st.info(f"✨ Efficiency: **{best['total_efficiency (%)'] if 'total_efficiency (%)' in best else best['total efficiency (%)']}%** | Date: **{p_date}**")
+        # 효율 정보 요약 표시 (2종)
+        st.info(f"✨ Total Eff: **{best['total efficiency (%)']}%** | Static Eff: **{best['static pressure efficiency (%)']}%**")
         
         perf_img = create_performance_chart(df, u_cmh, u_pa)
-        
-        # 새 CSV 컬럼명 정의
         noise_bands = [f'{hz}(dB / dB(A))' for hz in ['63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz']]
         total_col = 'Total_dB / dB(A)'
         
@@ -192,7 +192,6 @@ if df is not None:
         if all(b in best.index for b in noise_bands):
             noise_img = create_noise_chart(best, noise_bands)
             st.image(noise_img, caption="Noise Spectrum Analysis")
-            st.info(f"🔊 **Total Noise Level: {best[total_col]}**")
 
         proj_info = {
             "project": p_name if p_name else "N/A",
@@ -201,9 +200,6 @@ if df is not None:
             "date": p_date.strftime("%Y-%m-%d")
         }
         pdf_data = create_pdf(best, u_cmh, u_pa, perf_img, noise_img, proj_info, noise_bands, total_col)
-        st.download_button("📥 Download Technical Report (V3.1)", pdf_data, f"Report_{p_name}.pdf")
-        
-        with st.expander("📂 Matching Models Database"):
-            st.dataframe(matched, use_container_width=True)
+        st.download_button("📥 Download Technical Report (V3.2)", pdf_data, f"Report_{p_name}.pdf")
     else:
         st.warning("No matching fan models found.")
