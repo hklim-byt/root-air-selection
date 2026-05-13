@@ -21,7 +21,7 @@ with col_logo:
 with col_title:
     st.markdown("###")
     st.title("루트에어 송풍기 선정 프로그램")
-    st.write("Root Air Fan Selection System V1.6")
+    st.write("Root Air Fan Selection System V1.7")
 
 # 2. 데이터 불러오기 함수
 def load_my_data():
@@ -35,30 +35,22 @@ def load_my_data():
 
 df = load_my_data()
 
-# 3. 그래프 생성 함수 (선으로 연결 + 십자선)
+# 3. 그래프 생성 함수
 def create_fan_chart(all_df, user_cmh, user_pa):
     fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # 모델별로 그룹화하여 선을 그립니다.
-    # 현재 데이터는 모델명이 모두 같으므로 하나의 이쁜 선이 그려집니다.
     unique_models = all_df.iloc[:, 0].unique()
-    
     for model in unique_models:
         model_data = all_df[all_df.iloc[:, 0] == model]
-        # 풍량(3번 열) 기준으로 정렬해야 선이 꼬이지 않고 예쁘게 나옵/니다.
         model_data = model_data.sort_values(by=all_df.columns[3])
-        
-        # 실선(plot)과 데이터 점(scatter)을 함께 표시
         ax.plot(model_data.iloc[:, 3], model_data.iloc[:, 5], marker='o', markersize=4, label=f"Curve: {model}", linewidth=2)
     
-    # 설계점(입력값)에 붉은색 큰 점과 십자선 표시
     ax.scatter(user_cmh, user_pa, color='red', s=150, label='Design Point', zorder=10)
     ax.axhline(user_pa, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
     ax.axvline(user_cmh, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
     
     ax.set_xlabel('Air Flow (CMH)')
     ax.set_ylabel('Static Pressure (Pa)')
-    ax.set_title('Fan Performance Selection Chart (Line Mode)')
+    ax.set_title('Fan Performance Selection Chart')
     ax.grid(True, linestyle=':', alpha=0.6)
     ax.legend()
 
@@ -68,24 +60,37 @@ def create_fan_chart(all_df, user_cmh, user_pa):
     plt.close(fig)
     return img_buf
 
-# 4. PDF 생성 함수
-def create_pdf(model_info, user_cmh, user_pa, chart_buf):
+# 4. PDF 생성 함수 (입력 정보 추가)
+def create_pdf(model_info, user_cmh, user_pa, chart_buf, project_info):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
+    
+    # 보고서 제목
     p.setFont("Helvetica-Bold", 20)
     p.drawString(50, height - 50, "Fan Selection Report")
-    p.setFont("Helvetica", 12)
     p.line(50, height - 65, 550, height - 65)
-    p.drawString(50, height - 100, f"Design Point: {user_cmh} CMH / {user_pa} Pa")
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, height - 140, "[ Selected Model Information ]")
-    p.setFont("Helvetica", 12)
-    p.drawString(50, height - 170, f"Model Name: {model_info.iloc[0]}")
-    p.drawString(50, height - 190, f"Selected Operation: {model_info.iloc[3]} CMH / {model_info.iloc[5]} Pa")
-    p.drawString(50, height - 210, f"Motor Power: {model_info.iloc[6]} kW")
+    
+    # 프로젝트 및 고객 정보 (추가된 부분)
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, height - 90, "[ Project Information ]")
+    p.setFont("Helvetica", 11)
+    p.drawString(60, height - 110, f"- Project Name: {project_info['project']}")
+    p.drawString(60, height - 130, f"- Customer: {project_info['customer']}")
+    p.drawString(60, height - 150, f"- Prepared by: {project_info['manager']}")
+    
+    # 설계 조건 및 모델 정보
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, height - 180, "[ Technical Specifications ]")
+    p.setFont("Helvetica", 11)
+    p.drawString(60, height - 200, f"- Design Point: {user_cmh} CMH / {user_pa} Pa")
+    p.drawString(60, height - 220, f"- Selected Model: {model_info.iloc[0]}")
+    p.drawString(60, height - 240, f"- Motor Power: {model_info.iloc[6]} kW")
+    
+    # 그래프 삽입
     img = ImageReader(chart_buf)
-    p.drawImage(img, 50, height - 580, width=500, height=330)
+    p.drawImage(img, 50, height - 600, width=500, height=330)
+    
     p.showPage()
     p.save()
     buffer.seek(0)
@@ -94,32 +99,18 @@ def create_pdf(model_info, user_cmh, user_pa, chart_buf):
 # 5. 메인 로직
 if df is not None:
     st.divider()
+    
+    # 신규 추가: 프로젝트 정보 입력 섹션
+    st.subheader("📋 프로젝트 정보 입력")
+    row1_col1, row1_col2, row1_col3 = st.columns(3)
+    with row1_col1:
+        project_name = st.text_input("공사명 (Project Name)", placeholder="예: 00공장 증설 공사")
+    with row1_col2:
+        customer_name = st.text_input("고객사 (Customer)", placeholder="예: (주)루트에어")
+    with row1_col3:
+        manager_name = st.text_input("송풍기 선정 담당자", placeholder="예: 홍길동 과장")
+
     st.subheader("🔍 설계 조건 입력")
     c1, c2 = st.columns(2)
     with c1:
-        user_cmh = st.number_input("필요 풍량 (CMH)", value=120000, step=1000)
-    with c2:
-        user_pa = st.number_input("필요 정압 (Pa)", value=2400, step=10)
-
-    # 선정 로직
-    matched_fans = df[(df.iloc[:, 3] >= user_cmh) & (df.iloc[:, 5] >= user_pa)].copy()
-
-    if not matched_fans.empty:
-        best_ones = matched_fans.sort_values(by=[df.columns[3], df.columns[5]])
-        st.success(f"조건에 맞는 운전점을 {len(best_ones)}개 찾았습니다!")
-        st.dataframe(best_ones, use_container_width=True)
-        
-        top_model = best_ones.iloc[0]
-        chart_img = create_fan_chart(df, user_cmh, user_pa)
-        
-        st.divider()
-        st.subheader("📈 성능 곡선 (Fan Curve)")
-        st.image(chart_img, use_container_width=True)
-
-        pdf_buf = create_pdf(top_model, user_cmh, user_pa, chart_img)
-        st.download_button(label="📥 그래프 포함 PDF 보고서 다운로드", data=pdf_buf, file_name=f"Report_{top_model.iloc[0]}.pdf", mime="application/pdf")
-    else:
-        st.warning("⚠️ 조건에 맞는 모델이 없습니다.")
-
-    with st.expander("📂 전체 데이터베이스 확인"):
-        st.write(df)
+        user_cmh = st.number_input("필요 풍량 (CMH)", value=1
