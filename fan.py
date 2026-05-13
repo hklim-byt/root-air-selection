@@ -23,7 +23,7 @@ with col_logo:
 with col_title:
     st.markdown("###")
     st.title("루트에어 송풍기 선정 프로그램")
-    st.write("Root Air Fan Selection System V3.3")
+    st.write("Root Air Fan Selection System V3.2")
 
 # 2. 데이터 로드
 def load_my_data():
@@ -37,42 +37,22 @@ def load_my_data():
         df = pd.read_csv(file_name, encoding='cp949')
     return df
 
-# 3. V3.2 기반 성능 곡선 그래프 (서징 라인만 추가)
-def create_performance_chart(all_df, selected_model_name, best_rpm, user_cmh, user_pa):
-    model_df = all_df[all_df['model_name'] == selected_model_name]
-    
-    # 서징 라인 계산 (모델의 모든 RPM별 최소 풍량 지점 연결)
-    rpms = sorted(model_df['rpm'].unique())
-    surging_x = []
-    surging_y = []
-    for r in rpms:
-        rpm_group = model_df[model_df['rpm'] == r].sort_values(by='CMH')
-        surging_x.append(rpm_group['CMH'].iloc[0])
-        surging_y.append(rpm_group['Pa'].iloc[0])
-
-    # 현재 선정된 특정 RPM의 데이터만 추출 (V3.2 방식)
-    best_rpm_data = model_df[model_df['rpm'] == best_rpm].sort_values(by='CMH')
-
+# 3. 성능 곡선 그래프
+def create_performance_chart(all_df, user_cmh, user_pa):
     fig, ax = plt.subplots(figsize=(12, 8))
+    unique_models = all_df['model_name'].unique()
+    for model in unique_models:
+        model_data = all_df[all_df['model_name'] == model].sort_values(by='CMH')
+        ax.plot(model_data['CMH'], model_data['Pa'], marker='o', markersize=4, label=model, linewidth=2)
     
-    # 1. 선정된 단일 RPM 성능 곡선 (V3.2와 동일한 파란색 굵은 선)
-    ax.plot(best_rpm_data['CMH'], best_rpm_data['Pa'], color='#1f77b4', label=f'Model Curve ({best_rpm} rpm)', linewidth=3)
-    
-    # 2. 서징 라인 및 영역 표시 (빨간 점선)
-    ax.plot(surging_x, surging_y, color='red', linestyle='--', linewidth=2, label='Surge Line')
-    ax.fill_betweenx(surging_y, 0, surging_x, color='red', alpha=0.1) # 서징 영역 연하게 색칠
-    ax.text(surging_x[0], surging_y[0], '  SURGING ZONE', color='red', fontsize=10, fontweight='bold', va='bottom')
-
-    # 3. 설계점(Design Point) 및 가이드라인 (V3.2 방식)
-    ax.scatter(user_cmh, user_pa, color='red', s=250, marker='*', label='Design Point', zorder=20)
-    ax.axhline(user_pa, color='red', linestyle=':', linewidth=1, alpha=0.4)
-    ax.axvline(user_cmh, color='red', linestyle=':', linewidth=1, alpha=0.4)
-
+    ax.scatter(user_cmh, user_pa, color='red', s=200, label='Design Point', zorder=10)
+    ax.axhline(user_pa, color='red', linestyle='--', linewidth=1.5, alpha=0.6)
+    ax.axvline(user_cmh, color='red', linestyle='--', linewidth=1.5, alpha=0.6)
     ax.set_xlabel('Air Flow (CMH)', fontsize=12)
     ax.set_ylabel('Static Pressure (Pa)', fontsize=12)
-    ax.set_title(f'Performance Curve with Surge Line: {selected_model_name}', fontsize=15, fontweight='bold')
-    ax.legend(loc='upper right')
-    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.set_title('Fan Performance Curve', fontsize=15, fontweight='bold')
+    ax.grid(True, linestyle=':', alpha=0.7)
+    ax.legend(fontsize='medium')
     
     buf = BytesIO()
     plt.savefig(buf, format='png', dpi=200)
@@ -80,7 +60,7 @@ def create_performance_chart(all_df, selected_model_name, best_rpm, user_cmh, us
     plt.close(fig)
     return buf
 
-# 4. 소음 그래프 (V3.2 완벽 복원)
+# 4. 소음 스펙트럼 그래프
 def create_noise_chart(noise_row, bands):
     plot_values = []
     for b in bands:
@@ -92,24 +72,20 @@ def create_noise_chart(noise_row, bands):
     display_labels = ['63', '125', '250', '500', '1k', '2k', '4k', '8k']
     fig, ax = plt.subplots(figsize=(12, 6))
     bars = ax.bar(display_labels, plot_values, color='skyblue', edgecolor='navy', alpha=0.8)
-    
-    max_val = max(plot_values) if plot_values else 0
-    ax.set_ylim(0, max_val + 25)
+    ax.set_ylim(0, max(plot_values) + 25 if plot_values else 100)
     ax.set_ylabel('Sound Pressure Level (dB)', fontsize=12)
-    ax.set_title('Octave Band Noise Spectrum', fontsize=15, fontweight='bold')
+    ax.set_title(f'Noise Spectrum Analysis (Linear dB)', fontsize=15, fontweight='bold')
     ax.grid(axis='y', linestyle=':', alpha=0.7)
-    
     for bar in bars:
         height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height + 1, f'{int(height)}', ha='center', va='bottom', fontweight='bold')
-    
+        ax.text(bar.get_x() + bar.get_width()/2., height + 1, f'{height:.1f}', ha='center', va='bottom', fontweight='bold')
     buf = BytesIO()
     plt.savefig(buf, format='png', dpi=200)
     buf.seek(0)
     plt.close(fig)
     return buf
 
-# 5. PDF 생성 함수 (V3.2 레이아웃 유지)
+# 5. PDF 생성 함수 (V3.2: 효율 세분화 및 P fan kW 반영)
 def draw_table(p, x, y, headers, data):
     cell_width = 54
     cell_height = 25
@@ -126,9 +102,11 @@ def create_pdf(model_info, user_cmh, user_pa, perf_buf, noise_buf, project_info,
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     w, h = A4
+    
+    # --- PAGE 1 ---
     if os.path.exists("logo.png"):
         p.drawImage(ImageReader("logo.png"), w - 160, h - 60, width=110, height=35, preserveAspectRatio=True, mask='auto')
-    
+
     p.setFont("Helvetica-Bold", 22)
     p.drawString(50, h - 50, "Technical Selection Report")
     p.line(50, h - 65, 550, h - 65)
@@ -145,63 +123,83 @@ def create_pdf(model_info, user_cmh, user_pa, perf_buf, noise_buf, project_info,
     p.drawString(60, h - 215, f"- Model Name: {model_info['model_name']}")
     p.drawString(60, h - 235, f"- Operation RPM: {model_info['rpm']} rpm")
     p.drawString(60, h - 255, f"- Design Duty: {user_cmh} CMH @ {user_pa} Pa")
-    p.drawString(60, h - 275, f"- Total Eff: {model_info['total efficiency (%)']}% / Static Eff: {model_info['static pressure efficiency (%)']}%")
-    p.drawString(60, h - 295, f"- P fan: {model_info['power (kW)']} kW")
+    
+    # 효율 2종 표시
+    total_eff = model_info['total efficiency (%)']
+    static_eff = model_info['static pressure efficiency (%)']
+    p.drawString(60, h - 275, f"- Total Efficiency: {total_eff} %")
+    p.drawString(60, h - 295, f"- Static Pressure Efficiency: {static_eff} %")
+    
+    # Motor Power -> P fan (kW) 변경
+    p.drawString(60, h - 315, f"- P fan: {model_info['power (kW)']} kW")
     
     p.drawImage(ImageReader(perf_buf), 50, h - 710, width=500, height=380)
     p.showPage()
     
+    # --- PAGE 2 ---
     if noise_buf:
         if os.path.exists("logo.png"):
             p.drawImage(ImageReader("logo.png"), w - 160, h - 60, width=110, height=35, preserveAspectRatio=True, mask='auto')
         p.setFont("Helvetica-Bold", 22)
         p.drawString(50, h - 50, "Acoustic Analysis Report")
         p.line(50, h - 65, 550, h - 65)
+        
         p.setFont("Helvetica-Bold", 14)
-        p.drawString(50, h - 100, "[2] Noise Data Table")
+        p.drawString(50, h - 100, "[2] Noise Data Table (dB / dB(A))")
         headers = ['63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', 'Total']
         data_vals = [model_info[b] for b in noise_bands]
         data_vals.append(model_info[total_col])
         draw_table(p, 50, h - 150, headers, data_vals)
         p.drawImage(ImageReader(noise_buf), 50, h - 520, width=500, height=300)
-    
+        
     p.showPage()
     p.save()
     buffer.seek(0)
     return buffer
 
-# --- 메인 실행부 ---
+# --- 메인 실행 ---
 df = load_my_data()
 if df is not None:
     st.divider()
     st.subheader("📋 Project Information")
     c1, c2, c3, c4 = st.columns(4)
-    p_name = c1.text_input("Project Name", "P4 Project")
-    c_name = c2.text_input("Customer", "K-ENSOL")
-    m_name = c3.text_input("Manager", "J.H. KIM")
-    p_date = c4.date_input("Date", datetime.now())
+    p_name = c1.text_input("Project Name", placeholder="English Only")
+    c_name = c2.text_input("Customer", placeholder="English Only")
+    m_name = c3.text_input("Manager", placeholder="English Only")
+    p_date = c4.date_input("Selection Date", datetime.now())
 
     st.subheader("🔍 Selection Conditions")
     c1, c2 = st.columns(2)
-    u_cmh = c1.number_input("Flow (CMH)", value=120000)
-    u_pa = c2.number_input("Pressure (Pa)", value=2400)
+    u_cmh = c1.number_input("Flow (CMH)", value=120000, step=1000)
+    u_pa = c2.number_input("Pressure (Pa)", value=2400, step=10)
 
     matched = df[(df['CMH'] >= u_cmh) & (df['Pa'] >= u_pa)].copy()
 
     if not matched.empty:
         best = matched.sort_values(by=['CMH', 'Pa']).iloc[0]
         st.success(f"Best Match: **{best['model_name']}** (RPM: {best['rpm']})")
+        
+        # 효율 정보 요약 표시 (2종)
         st.info(f"✨ Total Eff: **{best['total efficiency (%)']}%** | Static Eff: **{best['static pressure efficiency (%)']}%**")
         
-        # [핵심] 어제 방식의 단일 RPM 곡선 + 서징 라인 그래프
-        perf_img = create_performance_chart(df, best['model_name'], best['rpm'], u_cmh, u_pa)
-        st.image(perf_img, caption="Performance Curve (Selection Only)")
-        
+        perf_img = create_performance_chart(df, u_cmh, u_pa)
         noise_bands = [f'{hz}(dB / dB(A))' for hz in ['63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz']]
         total_col = 'Total_dB / dB(A)'
-        noise_img = create_noise_chart(best, noise_bands)
-        st.image(noise_img, caption="Noise Analysis")
+        
+        st.image(perf_img, caption="Performance Curve")
+        
+        noise_img = None
+        if all(b in best.index for b in noise_bands):
+            noise_img = create_noise_chart(best, noise_bands)
+            st.image(noise_img, caption="Noise Spectrum Analysis")
 
-        proj_info = {"project": p_name, "customer": c_name, "manager": m_name, "date": p_date.strftime("%Y-%m-%d")}
+        proj_info = {
+            "project": p_name if p_name else "N/A",
+            "customer": c_name if c_name else "N/A",
+            "manager": m_name if m_name else "N/A",
+            "date": p_date.strftime("%Y-%m-%d")
+        }
         pdf_data = create_pdf(best, u_cmh, u_pa, perf_img, noise_img, proj_info, noise_bands, total_col)
-        st.download_button("📥 Download Technical Report (V3.3 PDF)", pdf_data, f"Report_{p_name}.pdf")
+        st.download_button("📥 Download Technical Report (V3.2)", pdf_data, f"Report_{p_name}.pdf")
+    else:
+        st.warning("No matching fan models found.")
