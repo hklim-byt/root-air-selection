@@ -21,7 +21,7 @@ with col_logo:
 with col_title:
     st.markdown("###")
     st.title("루트에어 송풍기 선정 프로그램")
-    st.write("Root Air Fan Selection System V1.5")
+    st.write("Root Air Fan Selection System V1.6")
 
 # 2. 데이터 불러오기 함수
 def load_my_data():
@@ -35,62 +35,57 @@ def load_my_data():
 
 df = load_my_data()
 
-# 3. 그래프 생성 함수 (선정점에 붉은 선 추가)
+# 3. 그래프 생성 함수 (선으로 연결 + 십자선)
 def create_fan_chart(all_df, user_cmh, user_pa):
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(10, 6))
     
-    # 전체 데이터 점 찍기
-    ax.scatter(all_df.iloc[:, 3], all_df.iloc[:, 5], color='blue', label='Available Models', alpha=0.5)
+    # 모델별로 그룹화하여 선을 그립니다.
+    # 현재 데이터는 모델명이 모두 같으므로 하나의 이쁜 선이 그려집니다.
+    unique_models = all_df.iloc[:, 0].unique()
     
-    # 선정점(입력값) 표시
-    ax.scatter(user_cmh, user_pa, color='red', s=100, label='Design Point (Input)', zorder=5)
+    for model in unique_models:
+        model_data = all_df[all_df.iloc[:, 0] == model]
+        # 풍량(3번 열) 기준으로 정렬해야 선이 꼬이지 않고 예쁘게 나옵/니다.
+        model_data = model_data.sort_values(by=all_df.columns[3])
+        
+        # 실선(plot)과 데이터 점(scatter)을 함께 표시
+        ax.plot(model_data.iloc[:, 3], model_data.iloc[:, 5], marker='o', markersize=4, label=f"Curve: {model}", linewidth=2)
     
-    # 붉은색 가로, 세로 점선 추가
-    ax.axhline(user_pa, color='red', linestyle='--', linewidth=1)
-    ax.axvline(user_cmh, color='red', linestyle='--', linewidth=1)
+    # 설계점(입력값)에 붉은색 큰 점과 십자선 표시
+    ax.scatter(user_cmh, user_pa, color='red', s=150, label='Design Point', zorder=10)
+    ax.axhline(user_pa, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
+    ax.axvline(user_cmh, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
     
-    # 축 이름 및 스타일
     ax.set_xlabel('Air Flow (CMH)')
     ax.set_ylabel('Static Pressure (Pa)')
-    ax.set_title('Fan Performance Selection Chart')
+    ax.set_title('Fan Performance Selection Chart (Line Mode)')
     ax.grid(True, linestyle=':', alpha=0.6)
     ax.legend()
 
-    # 이미지를 메모리에 저장
     img_buf = BytesIO()
     plt.savefig(img_buf, format='png', dpi=200)
     img_buf.seek(0)
     plt.close(fig)
     return img_buf
 
-# 4. PDF 생성 함수 (그래프 이미지 포함)
+# 4. PDF 생성 함수
 def create_pdf(model_info, user_cmh, user_pa, chart_buf):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
-    
-    # 상단 텍스트 정보
     p.setFont("Helvetica-Bold", 20)
     p.drawString(50, height - 50, "Fan Selection Report")
-    
     p.setFont("Helvetica", 12)
     p.line(50, height - 65, 550, height - 65)
-    
     p.drawString(50, height - 100, f"Design Point: {user_cmh} CMH / {user_pa} Pa")
-    
     p.setFont("Helvetica-Bold", 14)
     p.drawString(50, height - 140, "[ Selected Model Information ]")
     p.setFont("Helvetica", 12)
     p.drawString(50, height - 170, f"Model Name: {model_info.iloc[0]}")
-    p.drawString(50, height - 190, f"Performance: {model_info.iloc[3]} CMH / {model_info.iloc[5]} Pa")
+    p.drawString(50, height - 190, f"Selected Operation: {model_info.iloc[3]} CMH / {model_info.iloc[5]} Pa")
     p.drawString(50, height - 210, f"Motor Power: {model_info.iloc[6]} kW")
-    
-    # --- 그래프 삽입 부분 ---
-    p.drawString(50, height - 260, "[ Performance Chart ]")
-    # 그래프 버퍼를 이미지로 읽어서 삽입 (x, y, width, height)
     img = ImageReader(chart_buf)
-    p.drawImage(img, 50, height - 620, width=500, height=330)
-    
+    p.drawImage(img, 50, height - 580, width=500, height=330)
     p.showPage()
     p.save()
     buffer.seek(0)
@@ -111,26 +106,20 @@ if df is not None:
 
     if not matched_fans.empty:
         best_ones = matched_fans.sort_values(by=[df.columns[3], df.columns[5]])
-        st.success(f"조건에 맞는 송풍기를 {len(best_ones)}개 찾았습니다!")
+        st.success(f"조건에 맞는 운전점을 {len(best_ones)}개 찾았습니다!")
         st.dataframe(best_ones, use_container_width=True)
         
         top_model = best_ones.iloc[0]
-
-        # 그래프 생성 (Matplotlib 사용)
         chart_img = create_fan_chart(df, user_cmh, user_pa)
         
-        # 화면에 그래프 표시
         st.divider()
-        st.subheader("📈 성능 분포 그래프")
-        st.image(chart_img, caption="선정 위치 십자선 표시 (Red Line)", use_container_width=True)
+        st.subheader("📈 성능 곡선 (Fan Curve)")
+        st.image(chart_img, use_container_width=True)
 
-        # PDF 생성 및 다운로드 버튼
         pdf_buf = create_pdf(top_model, user_cmh, user_pa, chart_img)
-        st.download_button(
-            label="📥 그래프 포함 PDF 보고서 다운로드",
-            data=pdf_buf,
-            file_name=f"Report_{top_model.iloc[0]}.pdf",
-            mime="application/pdf"
-        )
+        st.download_button(label="📥 그래프 포함 PDF 보고서 다운로드", data=pdf_buf, file_name=f"Report_{top_model.iloc[0]}.pdf", mime="application/pdf")
     else:
         st.warning("⚠️ 조건에 맞는 모델이 없습니다.")
+
+    with st.expander("📂 전체 데이터베이스 확인"):
+        st.write(df)
