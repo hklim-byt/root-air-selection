@@ -23,7 +23,7 @@ with col_logo:
 with col_title:
     st.markdown("###")
     st.title("루트에어 송풍기 선정 프로그램")
-    st.write("Root Air Fan Selection System V4.1")
+    st.write("Root Air Fan Selection System V3.3")
 
 # 2. 데이터 로드
 def load_my_data():
@@ -37,62 +37,47 @@ def load_my_data():
         df = pd.read_csv(file_name, encoding='cp949')
     return df
 
-# 3. 종합 성능 곡선 생성 함수 (Pa, kW, Eff, Surge Line 통합)
-def create_combined_chart(all_df, selected_model_name, user_cmh, user_pa):
+# 3. 성능 곡선 그래프 (서징 라인 포함)
+def create_performance_chart(all_df, selected_model_name, user_cmh, user_pa):
     model_df = all_df[all_df['model_name'] == selected_model_name].sort_values(by=['rpm', 'CMH'])
     rpms = sorted(model_df['rpm'].unique())
     
-    # 가시성 좋은 차별화된 색상 리스트
+    # 가시성이 좋은 뚜렷한 색상들
     distinct_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
     
-    fig, ax1 = plt.subplots(figsize=(12, 8))
-    ax2 = ax1.twinx() # 보조축
+    fig, ax = plt.subplots(figsize=(12, 8))
     
     surging_x = []
     surging_y = []
 
-    # 1. RPM별 Pa 곡선 및 서징 포인트 추출
+    # 1. RPM별 정압 곡선 그리기
     for i, rpm in enumerate(rpms):
         rpm_data = model_df[model_df['rpm'] == rpm]
         color = distinct_colors[i % len(distinct_colors)]
         
-        # 정압(Pa) 곡선
-        ax1.plot(rpm_data['CMH'], rpm_data['Pa'], color=color, label=f'{rpm} rpm', linewidth=2)
-        # 곡선 끝 RPM 라벨
-        ax1.text(rpm_data['CMH'].iloc[-1], rpm_data['Pa'].iloc[-1], f' {rpm}rpm', fontsize=9, color=color, va='center', fontweight='bold')
+        ax.plot(rpm_data['CMH'], rpm_data['Pa'], color=color, label=f'{rpm} rpm', linewidth=2)
+        # 곡선 끝에 RPM 표시
+        ax.text(rpm_data['CMH'].iloc[-1], rpm_data['Pa'].iloc[-1], f' {rpm}rpm', fontsize=9, color=color, va='center', fontweight='bold')
         
-        # 서징 포인트 저장
+        # 서징 포인트 수집 (각 RPM 곡선의 가장 왼쪽 점)
         surging_x.append(rpm_data['CMH'].iloc[0])
         surging_y.append(rpm_data['Pa'].iloc[0])
 
-    # 2. 서징 라인 (Surging Line)
-    ax1.plot(surging_x, surging_y, color='red', linestyle='--', linewidth=2.5, label='Surge Line')
-    ax1.text(surging_x[-1], surging_y[-1], ' SURGE', color='red', fontsize=10, fontweight='bold')
+    # 2. 서징 라인 (Surge Line) 추가
+    ax.plot(surging_x, surging_y, color='red', linestyle='--', linewidth=2.5, label='Surge Line')
+    ax.fill_betweenx(surging_y, 0, surging_x, color='red', alpha=0.1) # 서징 영역 색칠
+    ax.text(surging_x[0], surging_y[0], '  SURGING ZONE', color='red', fontsize=10, fontweight='bold', va='bottom')
 
-    # 3. 효율 및 동력 곡선 (대표 RPM 기준 또는 추세선으로 표시)
-    # 가시성을 위해 점선 스타일 적용
-    target_rpm_data = model_df[model_df['rpm'] == max(rpms)]
-    ax2.plot(target_rpm_data['CMH'], target_rpm_data['total efficiency (%)'], color='green', linestyle=':', label='Eff (%)', alpha=0.7)
-    ax2.plot(target_rpm_data['CMH'], target_rpm_data['power (kW)'], color='purple', linestyle='-.', label='kW', alpha=0.7)
+    # 3. 설계점(Design Point) 강조
+    ax.scatter(user_cmh, user_pa, color='red', s=250, marker='*', label='Design Point', zorder=20)
+    ax.axhline(user_pa, color='red', linestyle=':', linewidth=1, alpha=0.4)
+    ax.axvline(user_cmh, color='red', linestyle=':', linewidth=1, alpha=0.4)
 
-    # 4. 설계점(Design Point) - 어제와 동일한 강조 방식
-    ax1.scatter(user_cmh, user_pa, color='red', s=250, marker='*', label='Design Point', zorder=20)
-    ax1.axhline(user_pa, color='red', linestyle='--', linewidth=1, alpha=0.4)
-    ax1.axvline(user_cmh, color='red', linestyle='--', linewidth=1, alpha=0.4)
-
-    # 레이블 및 스타일
-    ax1.set_xlabel('Air Flow (CMH)', fontsize=12)
-    ax1.set_ylabel('Static Pressure (Pa)', fontsize=12)
-    ax2.set_ylabel('Efficiency (%) / Power (kW)', fontsize=12)
-    ax1.set_title(f'Performance Characteristics: {selected_model_name}', fontsize=16, fontweight='bold')
-    
-    # 범례 (어제처럼 깔끔하게 통합)
-    h1, l1 = ax1.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    ax1.legend(h1 + h2, l1 + l2, loc='upper right', fontsize='small', frameon=True)
-    
-    ax1.grid(True, linestyle=':', alpha=0.6)
-    plt.tight_layout()
+    ax.set_xlabel('Air Flow (CMH)', fontsize=12)
+    ax.set_ylabel('Static Pressure (Pa)', fontsize=12)
+    ax.set_title(f'Performance Curve with Surge Line: {selected_model_name}', fontsize=15, fontweight='bold')
+    ax.legend(loc='upper right', fontsize='small')
+    ax.grid(True, linestyle=':', alpha=0.6)
     
     buf = BytesIO()
     plt.savefig(buf, format='png', dpi=200)
@@ -100,7 +85,7 @@ def create_combined_chart(all_df, selected_model_name, user_cmh, user_pa):
     plt.close(fig)
     return buf
 
-# 4. 소음 그래프 (어제 버전과 동일하게 복원)
+# 4. 소음 그래프 (V3.2 유지)
 def create_noise_chart(noise_row, bands):
     plot_values = []
     for b in bands:
@@ -129,7 +114,7 @@ def create_noise_chart(noise_row, bands):
     plt.close(fig)
     return buf
 
-# 5. PDF 생성 함수 (어제 V3.2 레이아웃 + 대형 통합 그래프)
+# 5. PDF 생성 함수 (V3.2 레이아웃 유지)
 def draw_table(p, x, y, headers, data):
     cell_width = 54
     cell_height = 25
@@ -142,7 +127,7 @@ def draw_table(p, x, y, headers, data):
         p.rect(x + (i * cell_width), y - cell_height, cell_width, cell_height, stroke=1, fill=0)
         p.drawCentredString(x + (i * cell_width) + cell_width/2, y - cell_height + 8, str(val))
 
-def create_pdf(model_info, user_cmh, user_pa, combined_buf, noise_buf, project_info, noise_bands, total_col):
+def create_pdf(model_info, user_cmh, user_pa, perf_buf, noise_buf, project_info, noise_bands, total_col):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     w, h = A4
@@ -150,6 +135,7 @@ def create_pdf(model_info, user_cmh, user_pa, combined_buf, noise_buf, project_i
     # PAGE 1
     if os.path.exists("logo.png"):
         p.drawImage(ImageReader("logo.png"), w - 160, h - 60, width=110, height=35, preserveAspectRatio=True, mask='auto')
+
     p.setFont("Helvetica-Bold", 22)
     p.drawString(50, h - 50, "Technical Selection Report")
     p.line(50, h - 65, 550, h - 65)
@@ -165,11 +151,11 @@ def create_pdf(model_info, user_cmh, user_pa, combined_buf, noise_buf, project_i
     p.setFont("Helvetica", 12)
     p.drawString(60, h - 215, f"- Model Name: {model_info['model_name']}")
     p.drawString(60, h - 235, f"- Operation RPM: {model_info['rpm']} rpm")
-    p.drawString(60, h - 255, f"- Design Point: {user_cmh} CMH @ {user_pa} Pa")
+    p.drawString(60, h - 255, f"- Design Duty: {user_cmh} CMH @ {user_pa} Pa")
     p.drawString(60, h - 275, f"- Total Eff: {model_info['total efficiency (%)']}% / Static Eff: {model_info['static pressure efficiency (%)']}%")
     p.drawString(60, h - 295, f"- P fan: {model_info['power (kW)']} kW")
     
-    p.drawImage(ImageReader(combined_buf), 50, h - 710, width=500, height=380)
+    p.drawImage(ImageReader(perf_buf), 50, h - 710, width=500, height=380)
     p.showPage()
     
     # PAGE 2
@@ -193,7 +179,7 @@ def create_pdf(model_info, user_cmh, user_pa, combined_buf, noise_buf, project_i
     buffer.seek(0)
     return buffer
 
-# --- 메인 실행부 ---
+# --- 메인 실행 ---
 df = load_my_data()
 if df is not None:
     st.divider()
@@ -215,14 +201,13 @@ if df is not None:
         best = matched.sort_values(by=['CMH', 'Pa']).iloc[0]
         st.success(f"Best Match: **{best['model_name']}** (RPM: {best['rpm']})")
         
-        # 어제와 동일한 정보 요약창
         st.info(f"✨ Total Eff: **{best['total efficiency (%)']}%** | Static Eff: **{best['static pressure efficiency (%)']}%**")
         
-        # 종합 성능 맵 생성
-        combined_img = create_combined_chart(df, best['model_name'], u_cmh, u_pa)
-        st.image(combined_img, caption="Performance Characteristic Curve (V4.1)")
+        # V3.3: 서징 라인이 포함된 성능 곡선
+        perf_img = create_performance_chart(df, best['model_name'], u_cmh, u_pa)
+        st.image(perf_img, caption="Performance Curve with Surge Line")
         
-        # 소음 처리
+        # 소음 처리 (V3.2 형식 유지)
         noise_bands = [f'{hz}(dB / dB(A))' for hz in ['63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz']]
         total_col = 'Total_dB / dB(A)'
         noise_img = create_noise_chart(best, noise_bands)
@@ -230,7 +215,7 @@ if df is not None:
         st.image(noise_img, caption="Noise Analysis")
 
         proj_info = {"project": p_name, "customer": c_name, "manager": m_name, "date": p_date.strftime("%Y-%m-%d")}
-        pdf_data = create_pdf(best, u_cmh, u_pa, combined_img, noise_img, proj_info, noise_bands, total_col)
-        st.download_button("📥 Download Technical Report (V4.1 PDF)", pdf_data, f"Report_{p_name}.pdf")
+        pdf_data = create_pdf(best, u_cmh, u_pa, perf_img, noise_img, proj_info, noise_bands, total_col)
+        st.download_button("📥 Download Technical Report (V3.3 PDF)", pdf_data, f"Report_{p_name}.pdf")
     else:
         st.warning("No matching model found.")
