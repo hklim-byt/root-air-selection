@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 페이지 설정
-st.set_page_config(page_title="루트에어 종합 선정 시스템 V5.1", layout="wide")
+st.set_page_config(page_title="루트에어 종합 선정 시스템 V5.2", layout="wide")
 
 # 1. 상단 레이아웃
 col_logo, col_title = st.columns([1, 4])
@@ -22,8 +22,8 @@ with col_logo:
         st.title("🏢")
 with col_title:
     st.markdown("###")
-    st.title("루트에어 송풍기 선정 시스템 V5.1")
-    st.write("Custom Marking & Noise Spec Refinement")
+    st.title("루트에어 송풍기 선정 시스템 V5.2")
+    st.write("Graph Alignment & Layout Optimization")
 
 # 2. 데이터 로드
 def load_my_data():
@@ -37,7 +37,7 @@ def load_my_data():
         df = pd.read_csv(file_name, encoding='cp949')
     return df
 
-# 3. 종합 성능 맵 생성 (마킹 수정: 붉은 별 -> 붉은 십자선 + 동그라미)
+# 3. 종합 성능 맵 생성 (그래프 중앙 정렬 로직 추가)
 def create_combined_chart(all_df, selected_model, user_cmh, user_pa):
     model_df = all_df[all_df['model_name'] == selected_model].sort_values(by=['rpm', 'CMH'])
     rpms = sorted(model_df['rpm'].unique())
@@ -47,6 +47,10 @@ def create_combined_chart(all_df, selected_model, user_cmh, user_pa):
     
     distinct_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
     surge_x, surge_y = [], []
+
+    # 데이터의 실제 최대값 확인
+    max_data_cmh = model_df['CMH'].max()
+    max_data_pa = model_df['Pa'].max()
 
     for i, rpm in enumerate(rpms):
         data = model_df[model_df['rpm'] == rpm]
@@ -60,10 +64,19 @@ def create_combined_chart(all_df, selected_model, user_cmh, user_pa):
     ax1.plot(surge_x, surge_y, 'r--', linewidth=2, label='Surge Line')
     ax1.fill_betweenx(surge_y, 0, surge_x, color='red', alpha=0.05)
     
-    # [수정 1] 선정 지점 표시: 붉은색 십자선 + 붉은 동그라미
-    ax1.axhline(user_pa, color='red', linestyle='-', linewidth=1.5, alpha=0.8, zorder=25) # 가로 십자선
-    ax1.axvline(user_cmh, color='red', linestyle='-', linewidth=1.5, alpha=0.8, zorder=25) # 세로 십자선
-    ax1.scatter(user_cmh, user_pa, color='red', s=120, edgecolors='white', marker='o', linewidths=2, zorder=30, label='Design Point')
+    # [수정] 그래프 중앙 정렬 로직
+    # 입력값과 데이터 최대값 중 큰 것을 기준으로 범위를 설정하여 여백 확보
+    limit_cmh = max(user_cmh * 1.3, max_data_cmh * 1.1)
+    limit_pa = max(user_pa * 1.3, max_data_pa * 1.1)
+    
+    ax1.set_xlim(0, limit_cmh)
+    ax1.set_ylim(0, limit_pa)
+    ax2.set_ylim(0, 100) # 효율은 100% 기준으로 고정
+
+    # 선정 지점 표시 (붉은 십자선 + 동그라미)
+    ax1.axhline(user_pa, color='red', linestyle='-', linewidth=1.2, alpha=0.7, zorder=25)
+    ax1.axvline(user_cmh, color='red', linestyle='-', linewidth=1.2, alpha=0.7, zorder=25)
+    ax1.scatter(user_cmh, user_pa, color='red', s=150, edgecolors='white', marker='o', linewidths=2, zorder=30, label='Design Point')
 
     ax1.set_xlabel('Air Flow (CMH)', fontsize=12)
     ax1.set_ylabel('Static Pressure (Pa)', fontsize=12)
@@ -80,7 +93,7 @@ def create_combined_chart(all_df, selected_model, user_cmh, user_pa):
     plt.close(fig)
     return buf
 
-# 4. 소음 그래프
+# 4. 소음 그래프 (V5.1 유지)
 def create_noise_chart(noise_row):
     bands_labels = ['63', '125', '250', '500', '1k', '2k', '4k', '8k']
     plot_values = []
@@ -108,7 +121,7 @@ def create_noise_chart(noise_row):
     plt.close(fig)
     return buf
 
-# 5. PDF 생성 함수 (소음 타이틀 수정 포함)
+# 5. PDF 생성 함수 (V5.1 레이아웃 유지)
 def draw_table(p, x, y, headers, data):
     cell_width = 54
     cell_height = 25
@@ -132,7 +145,6 @@ def create_pdf(model_info, user_cmh, user_pa, combined_buf, noise_buf, project_i
     p.drawString(50, h - 50, "Technical Selection Report")
     p.line(50, h - 65, 550, h - 65)
     
-    # 프로젝트 정보
     p.setFont("Helvetica", 11)
     p.drawString(50, h - 90, f"Project: {project_info['project']}")
     p.drawString(50, h - 105, f"Customer: {project_info['customer']}")
@@ -153,16 +165,13 @@ def create_pdf(model_info, user_cmh, user_pa, combined_buf, noise_buf, project_i
     p.drawImage(ImageReader(combined_buf), 40, h - 710, width=520, height=420)
     p.showPage()
     
-    # 2페이지: 소음 분석 (타이틀 수정)
     if noise_buf:
         if os.path.exists("logo.png"):
             p.drawImage(ImageReader("logo.png"), w - 160, h - 60, width=110, height=35, preserveAspectRatio=True, mask='auto')
         p.setFont("Helvetica-Bold", 22)
         p.drawString(50, h - 50, "Acoustic Analysis Report")
         p.line(50, h - 65, 550, h - 65)
-        
         p.setFont("Helvetica-Bold", 14)
-        # [수정 2] Noise Data Summary 뒤에 dB / dB(A) 추가
         p.drawString(50, h - 100, "[2] Noise Data Summary (dB / dB(A))")
         
         bands_labels = ['63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz']
@@ -200,23 +209,22 @@ if df is not None:
 
     selected_model = st.selectbox("Model Select", df['model_name'].unique())
     
+    # 맵 생성 (중앙 정렬 로직 적용)
     combined_img = create_combined_chart(df, selected_model, u_cmh, u_pa)
     st.image(combined_img)
     
     best_row = df[df['model_name'] == selected_model].iloc[0]
     noise_img = create_noise_chart(best_row)
     if noise_img:
-        st.subheader("📊 [2] Noise Data Summary (dB / dB(A))") # 화면 UI 타이틀도 수정
+        st.subheader("📊 [2] Noise Data Summary (dB / dB(A))")
         st.image(noise_img)
 
     proj_info = {
-        "project": p_name if p_name else "N/A",
-        "customer": c_name if c_name else "N/A",
-        "manager": m_name if m_name else "N/A",
-        "date": p_date.strftime("%Y-%m-%d")
+        "project": p_name if p_name else "N/A", "customer": c_name if c_name else "N/A",
+        "manager": m_name if m_name else "N/A", "date": p_date.strftime("%Y-%m-%d")
     }
     
     pdf_data = create_pdf(best_row, u_cmh, u_pa, combined_img, noise_img, proj_info)
-    st.download_button("📥 Download Technical Selection Report (V5.1)", pdf_data, f"Report_{p_name}.pdf")
+    st.download_button("📥 Download Technical Selection Report (V5.2)", pdf_data, f"Report_{p_name}.pdf")
 else:
     st.error("데이터 파일을 로드할 수 없습니다.")
