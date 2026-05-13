@@ -60,18 +60,16 @@ def create_fan_chart(all_df, user_cmh, user_pa):
     plt.close(fig)
     return img_buf
 
-# 4. PDF 생성 함수 (입력 정보 추가)
+# 4. PDF 생성 함수 (프로젝트 정보 포함)
 def create_pdf(model_info, user_cmh, user_pa, chart_buf, project_info):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
     
-    # 보고서 제목
     p.setFont("Helvetica-Bold", 20)
     p.drawString(50, height - 50, "Fan Selection Report")
     p.line(50, height - 65, 550, height - 65)
     
-    # 프로젝트 및 고객 정보 (추가된 부분)
     p.setFont("Helvetica-Bold", 12)
     p.drawString(50, height - 90, "[ Project Information ]")
     p.setFont("Helvetica", 11)
@@ -79,7 +77,6 @@ def create_pdf(model_info, user_cmh, user_pa, chart_buf, project_info):
     p.drawString(60, height - 130, f"- Customer: {project_info['customer']}")
     p.drawString(60, height - 150, f"- Prepared by: {project_info['manager']}")
     
-    # 설계 조건 및 모델 정보
     p.setFont("Helvetica-Bold", 12)
     p.drawString(50, height - 180, "[ Technical Specifications ]")
     p.setFont("Helvetica", 11)
@@ -87,7 +84,6 @@ def create_pdf(model_info, user_cmh, user_pa, chart_buf, project_info):
     p.drawString(60, height - 220, f"- Selected Model: {model_info.iloc[0]}")
     p.drawString(60, height - 240, f"- Motor Power: {model_info.iloc[6]} kW")
     
-    # 그래프 삽입
     img = ImageReader(chart_buf)
     p.drawImage(img, 50, height - 600, width=500, height=330)
     
@@ -100,7 +96,6 @@ def create_pdf(model_info, user_cmh, user_pa, chart_buf, project_info):
 if df is not None:
     st.divider()
     
-    # 신규 추가: 프로젝트 정보 입력 섹션
     st.subheader("📋 프로젝트 정보 입력")
     row1_col1, row1_col2, row1_col3 = st.columns(3)
     with row1_col1:
@@ -113,4 +108,40 @@ if df is not None:
     st.subheader("🔍 설계 조건 입력")
     c1, c2 = st.columns(2)
     with c1:
-        user_cmh = st.number_input("필요 풍량 (CMH)", value=1
+        user_cmh = st.number_input("필요 풍량 (CMH)", value=120000, step=1000)
+    with c2:
+        user_pa = st.number_input("필요 정압 (Pa)", value=2400, step=10)
+
+    matched_fans = df[(df.iloc[:, 3] >= user_cmh) & (df.iloc[:, 5] >= user_pa)].copy()
+
+    if not matched_fans.empty:
+        best_ones = matched_fans.sort_values(by=[df.columns[3], df.columns[5]])
+        st.success(f"조건에 맞는 운전점을 {len(best_ones)}개 찾았습니다!")
+        
+        top_model = best_ones.iloc[0]
+        chart_img = create_fan_chart(df, user_cmh, user_pa)
+        
+        project_info = {
+            "project": project_name if project_name else "N/A",
+            "customer": customer_name if customer_name else "N/A",
+            "manager": manager_name if manager_name else "N/A"
+        }
+
+        st.divider()
+        st.subheader("📈 성능 곡선 및 결과")
+        st.image(chart_img, use_container_width=True)
+
+        pdf_buf = create_pdf(top_model, user_cmh, user_pa, chart_img, project_info)
+        st.download_button(
+            label="📥 프로젝트 정보 포함 PDF 다운로드",
+            data=pdf_buf,
+            file_name=f"Report_{project_name}.pdf" if project_name else "Report.pdf",
+            mime="application/pdf"
+        )
+        
+        st.dataframe(best_ones, use_container_width=True)
+    else:
+        st.warning("⚠️ 조건에 맞는 모델이 없습니다.")
+
+    with st.expander("📂 전체 데이터베이스 확인"):
+        st.write(df)
