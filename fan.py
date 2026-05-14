@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 페이지 설정
-st.set_page_config(page_title="루트에어 선정 시스템 V7.3", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V7.4", layout="wide")
 
 # 1. 데이터 로드 함수
 def load_my_data():
@@ -21,38 +21,28 @@ def load_my_data():
         except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
-# 2. 메인 성능 맵 생성 (잘림 방지 및 선명도 최적화)
+# 2. 메인 성능 맵 생성
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     model_df = all_df[all_df['model_name'] == selected_model].sort_values(by=['rpm', 'CMH'])
     rpms = sorted(model_df['rpm'].unique())
-    
     fig, ax = plt.subplots(figsize=(10, 6))
-    
     for rpm in rpms:
         data = model_df[model_df['rpm'] == rpm]
         ax.plot(data['CMH'], data['Pa'], color='steelblue', linewidth=1.2, alpha=0.5)
-        # RPM 라벨 위치 조정
         ax.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', 
                 color='steelblue', fontsize=8, fontweight='bold', va='center')
-
     x_max = max(user_cmh * 1.3, model_df['CMH'].max())
     x_path = np.linspace(0, x_max, 100)
     k = user_pa / (user_cmh**2) if user_cmh != 0 else 0
     y_path = k * (x_path**2)
     ax.plot(x_path, y_path, color='#1f77b4', linewidth=3.5, label='System Resistance')
-
     ax.axvline(user_cmh, color='red', linestyle='--', linewidth=0.8, alpha=0.4)
     ax.axhline(user_pa, color='red', linestyle='--', linewidth=0.8, alpha=0.4)
     ax.scatter(user_cmh, user_pa, color='red', s=120, edgecolors='white', zorder=30, label='Design Point')
-
-    ax.set_xlim(0, x_max)
-    ax.set_ylim(0, max(user_pa * 1.4, model_df['Pa'].max()))
-    ax.set_xlabel('Flow (CMH)', fontweight='bold')
-    ax.set_ylabel('Pressure (Pa)', fontweight='bold')
+    ax.set_xlim(0, x_max); ax.set_ylim(0, max(user_pa * 1.4, model_df['Pa'].max()))
+    ax.set_xlabel('Flow (CMH)', fontweight='bold'); ax.set_ylabel('Pressure (Pa)', fontweight='bold')
     ax.set_title(f"Performance Map: {selected_model}", fontsize=14, fontweight='bold', pad=15)
-    ax.grid(True, linestyle=':', alpha=0.5)
-    ax.legend(loc='upper right', fontsize=9)
-    
+    ax.grid(True, linestyle=':', alpha=0.5); ax.legend(loc='upper right', fontsize=9)
     plt.tight_layout()
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=200); buf.seek(0); plt.close(fig)
     return buf
@@ -69,58 +59,55 @@ def create_noise_chart(noise_row):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150); buf.seek(0); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (로고 우측 상단 배치 및 수직 레이아웃)
+# 4. PDF 리포트 생성 (로고 크기 확대 및 수평 정렬 정밀 조정)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     w, h = A4
     
-    # 헤더 구성
-    p.setFont("Helvetica-Bold", 22)
-    p.drawString(50, h-55, "Technical Selection Report")
-    
+    # [수정] 리포트 헤더 로고 크기 확대 및 수평 정렬
     logo_path = "logo.png"
+    p.setFont("Helvetica-Bold", 24) # 타이틀 폰트 크기 살짝 키움
+    p.drawString(50, h-60, "Technical Selection Report")
+    
     if os.path.exists(logo_path):
-        # 로고를 우측 상단 수평 방향으로 배치
-        p.drawImage(logo_path, w-170, h-65, width=120, preserveAspectRatio=True, mask='auto')
+        # 로고 크기를 키우고(width=140), 타이틀 글씨 높이에 맞춰 y좌표 조정 (h-72)
+        p.drawImage(logo_path, w-190, h-72, width=140, preserveAspectRatio=True, mask='auto')
     
     p.setLineWidth(1.5)
-    p.line(50, h-75, 545, h-75)
+    p.line(50, h-85, 545, h-85)
 
-    # 섹션 1 & 2: V6.9 스타일 수직 배치
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-100, "[1] Project Information")
+    # 데이터 섹션 배치 (좌표 미세 조정)
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-110, "[1] Project Information")
     p.setFont("Helvetica", 10)
-    p.drawString(65, h-120, f"Project Name: {p_info['project']}")
-    p.drawString(65, h-135, f"Customer: {p_info['customer']}")
-    p.drawString(65, h-150, f"Engineer: {p_info['manager']}")
-    p.drawString(65, h-165, f"Date: {p_info['date']}")
+    p.drawString(65, h-130, f"Project Name: {p_info['project']}")
+    p.drawString(65, h-145, f"Customer: {p_info['customer']}")
+    p.drawString(65, h-160, f"Engineer: {p_info['manager']}")
+    p.drawString(65, h-175, f"Date: {p_info['date']}")
 
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-200, "[2] Design & Performance")
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-210, "[2] Design & Performance")
     p.setFont("Helvetica", 10)
-    p.drawString(65, h-220, f"Selected Model: {model_data['model_name']}")
-    p.drawString(65, h-235, f"Operating Speed: {model_data['rpm']} RPM")
-    p.drawString(65, h-250, f"Design Flow: {d_point['cmh']:,} CMH / Design Pressure: {d_point['pa']:,} Pa")
-    p.drawString(65, h-265, f"Absorbed Power: {model_data['power (kW)']} kW / Total Efficiency: {model_data['total efficiency (%)']}%")
+    p.drawString(65, h-230, f"Selected Model: {model_data['model_name']}")
+    p.drawString(65, h-245, f"Operating Speed: {model_data['rpm']} RPM")
+    p.drawString(65, h-260, f"Design Flow: {d_point['cmh']:,} CMH / Design Pressure: {d_point['pa']:,} Pa")
+    p.drawString(65, h-275, f"Absorbed Power: {model_data['power (kW)']} kW / Total Efficiency: {model_data['total efficiency (%)']}%")
 
-    # 그래프 배치 (잘리지 않도록 높이 좌표 최적화)
-    p.drawImage(ImageReader(chart_buf), 45, h-610, width=500, height=330)
+    # 그래프 배치 (잘리지 않도록 여백 확보)
+    p.drawImage(ImageReader(chart_buf), 45, h-630, width=500, height=340)
 
-    # 섹션 3: Acoustic Analysis
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-635, "[3] Acoustic Analysis")
-    p.drawImage(ImageReader(noise_buf), 50, h-765, width=490, height=130)
+    # 소음 데이터 및 격자 표
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-655, "[3] Acoustic Analysis")
+    p.drawImage(ImageReader(noise_buf), 50, h-785, width=490, height=125)
     
-    # 격자 표
-    table_y = h-785
+    table_y = h-805
     p.setLineWidth(0.5); p.setStrokeColor(colors.black)
     p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 18, fill=1)
     p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 9)
-    
     labels = ['63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', 'Total']
     for i, b in enumerate(labels):
         p.drawString(55 + (i*55), table_y + 5, b)
         p.line(50 + (i*55), table_y, 50 + (i*55), table_y + 18)
     p.line(545, table_y, 545, table_y + 18)
-    
     p.setFont("Helvetica", 9); table_y -= 18
     p.rect(50, table_y, 495, 18, fill=0)
     noise_cols = ['63Hz(dB / dB(A))', '125Hz(dB / dB(A))', '250Hz(dB / dB(A))', '500Hz(dB / dB(A))',
@@ -130,25 +117,24 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
         p.drawString(55 + (i*55), table_y + 5, val)
         p.line(50 + (i*55), table_y, 50 + (i*55), table_y + 18)
     p.line(545, table_y, 545, table_y + 18)
-
     p.showPage(); p.save(); buffer.seek(0)
     return buffer
 
 # --- 메인 실행부 (Streamlit) ---
 df = load_my_data()
 if df is not None:
-    # [수정] 헤더 수평 배치: 로고와 타이틀을 한 줄에
-    header_col1, header_col2 = st.columns([1, 4])
+    # [수정] 프로그램 헤더 로고 크기 확대 및 글씨 수평 정렬
+    header_col1, header_col2 = st.columns([1.5, 4]) # 로고 컬럼 비율 살짝 늘림
     with header_col1:
         if os.path.exists("logo.png"):
-            st.image("logo.png", width=180)
+            st.image("logo.png", width=220) # 화면 로고 크기 확대
     with header_col2:
-        # 건물 이모지 제거 및 수평 정렬 느낌 강조
-        st.markdown("<h1 style='margin-top: 10px;'>루트에어 송풍기 선정 시스템 V7.3</h1>", unsafe_allow_html=True)
+        # 텍스트 상단 여백(margin-top)을 조절하여 로고와 수평을 맞춤
+        st.markdown("<h1 style='margin-top: 15px; font-size: 42px;'>루트에어 송풍기 선정 시스템 V7.4</h1>", unsafe_allow_html=True)
     
     st.divider()
     
-    # 입력란 및 출력부 (이하 로직 동일)
+    # 입력 및 출력 로직 (동일)
     st.subheader("📋 Project Information")
     c1, c2, c3, c4 = st.columns(4)
     p_name = c1.text_input("Project Name", placeholder="English Only")
