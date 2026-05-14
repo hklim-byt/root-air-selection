@@ -11,18 +11,17 @@ import numpy as np
 from datetime import datetime
 
 # 페이지 설정
-st.set_page_config(page_title="루트에어 선정 시스템 V7.6", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V7.7", layout="wide")
 
 # 1. 데이터 로드 함수
 def load_my_data():
-    # 파일명을 사용자님의 실제 파일명(예: fan_performance_map_full_sample.csv)으로 변경해 주세요.
     target_file = 'fan_performance_map_full_sample.csv' 
     if os.path.exists(target_file):
         try: return pd.read_csv(target_file, encoding='utf-8-sig')
         except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
-# 2. 메인 성능 맵 생성
+# 2. 메인 성능 맵 생성 (2페이지 분량에 맞춰 고해상도 출력)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     model_df = all_df[all_df['model_name'] == selected_model].sort_values(by=['rpm', 'CMH'])
     rpms = sorted(model_df['rpm'].unique())
@@ -47,7 +46,7 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=200); buf.seek(0); plt.close(fig)
     return buf
 
-# 3. 소음 차트 생성 (2페이지용)
+# 3. 소음 차트 생성
 def create_noise_chart(noise_row):
     bands = ['63', '125', '250', '500', '1k', '2k', '4k', '8k']
     vals = [float(str(noise_row[[c for c in noise_row.index if b in c][0]]).split('/')[0]) for b in bands]
@@ -59,92 +58,87 @@ def create_noise_chart(noise_row):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150); buf.seek(0); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (로고 우측 상단 & 수평 정렬)
+# 4. PDF 리포트 생성 (로고 위치 하향 조정 및 우측 배치)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     w, h = A4
     
-    # --- PAGE 1: 로고 우측 상단 수평 배치 ---
+    # [수정] PDF 헤더: 로고를 글씨 높이에 맞춰 더 아래로 내림
     logo_path = "logo.png"
-    p.setFont("Helvetica-Bold", 20)
+    p.setFont("Helvetica-Bold", 22)
     p.drawString(50, h-60, "Technical Selection Report")
     
     if os.path.exists(logo_path):
-        # 로고를 오른쪽 상단(w-180)에 배치하고, 텍스트와 수평이 맞도록 y좌표(h-75) 조정
-        p.drawImage(logo_path, w-180, h-75, width=130, preserveAspectRatio=True, mask='auto')
+        # h-75에서 h-82로 좌표를 내려서 글씨와 수평을 맞춤
+        p.drawImage(logo_path, w-180, h-82, width=130, preserveAspectRatio=True, mask='auto')
     
-    p.setLineWidth(1.5); p.line(50, h-85, w-50, h-85)
+    p.setLineWidth(1.5); p.line(50, h-90, w-50, h-90)
 
-    # 섹션 1 & 2
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-115, "[1] Project Information")
+    # 1페이지 내용 배치
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-120, "[1] Project Information")
     p.setFont("Helvetica", 10.5)
-    p.drawString(65, h-140, f"Project Name : {p_info['project']}")
-    p.drawString(65, h-160, f"Customer : {p_info['customer']}")
-    p.drawString(65, h-180, f"Engineer : {p_info['manager']}")
-    p.drawString(w-150, h-180, f"Date : {p_info['date']}")
+    p.drawString(65, h-145, f"Project Name : {p_info['project']}")
+    p.drawString(65, h-165, f"Customer : {p_info['customer']}")
+    p.drawString(65, h-185, f"Engineer : {p_info['manager']}")
+    p.drawString(w-150, h-185, f"Date : {p_info['date']}")
 
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-220, "[2] Design & Performance")
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-225, "[2] Design & Performance")
     p.setFont("Helvetica", 10.5)
-    p.drawString(65, h-245, f"Selected Model : {model_data['model_name']}")
-    p.drawString(65, h-265, f"Operating Speed : {model_data['rpm']} RPM")
-    p.drawString(65, h-285, f"Design Flow : {d_point['cmh']:,} CMH / Design Pressure : {d_point['pa']:,} Pa")
-    p.drawString(65, h-305, f"Absorbed Power : {model_data['power (kW)']} kW / Total Efficiency : {model_data['total efficiency (%)']}%")
+    p.drawString(65, h-250, f"Selected Model : {model_data['model_name']}")
+    p.drawString(65, h-270, f"Operating Speed : {model_data['rpm']} RPM")
+    p.drawString(65, h-290, f"Design Flow : {d_point['cmh']:,} CMH / Design Pressure : {d_point['pa']:,} Pa")
+    p.drawString(65, h-310, f"Absorbed Power : {model_data['power (kW)']} kW / Total Efficiency : {model_data['total efficiency (%)']}%")
 
-    # 대형 성능 그래프
     p.drawImage(ImageReader(chart_buf), 50, h-740, width=495, height=410)
     p.setFont("Helvetica-Oblique", 9); p.drawCentredString(w/2, 40, "- Page 1 -")
     
-    # --- PAGE 2: 소음 데이터 ---
+    # 2페이지 이동
     p.showPage()
-    # 2페이지 헤더 동일 유지
-    p.setFont("Helvetica-Bold", 20); p.drawString(50, h-60, "Technical Selection Report")
+    p.setFont("Helvetica-Bold", 22); p.drawString(50, h-60, "Technical Selection Report")
     if os.path.exists(logo_path):
-        p.drawImage(logo_path, w-180, h-75, width=130, preserveAspectRatio=True, mask='auto')
-    p.setLineWidth(1.5); p.line(50, h-85, w-50, h-85)
+        p.drawImage(logo_path, w-180, h-82, width=130, preserveAspectRatio=True, mask='auto')
+    p.setLineWidth(1.5); p.line(50, h-90, w-50, h-90)
     
     p.setFont("Helvetica-Bold", 12); p.drawString(50, h-120, "[3] Acoustic Analysis")
     p.drawImage(ImageReader(noise_buf), 50, h-450, width=495, height=280)
     
-    # 소음 표
+    # 소음 표 격자
     table_y = h-520
     p.setLineWidth(0.5); p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 22, fill=1)
     p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 9.5)
     labels = ['63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', 'Total']
     for i, b in enumerate(labels):
-        p.drawCentredString(77 + (i*55), table_y + 7, b)
-        p.line(50 + (i*55), table_y, 50 + (i*55), table_y + 22)
+        p.drawCentredString(77 + (i*55), table_y + 7, b); p.line(50 + (i*55), table_y, 50 + (i*55), table_y + 22)
     p.line(545, table_y, 545, table_y + 22)
-    
-    p.setFont("Helvetica", 9.5); table_y -= 22
-    p.rect(50, table_y, 495, 22, fill=0)
+    p.setFont("Helvetica", 9.5); table_y -= 22; p.rect(50, table_y, 495, 22, fill=0)
     noise_cols = ['63Hz(dB / dB(A))', '125Hz(dB / dB(A))', '250Hz(dB / dB(A))', '500Hz(dB / dB(A))',
                   '1kHz(dB / dB(A))', '2kHz(dB / dB(A))', '4kHz(dB / dB(A))', '8kHz(dB / dB(A))', 'Total_dB / dB(A)']
     for i, col in enumerate(noise_cols):
         val = str(model_data[col]).split('/')[0].strip() + " dB"
-        p.drawCentredString(77 + (i*55), table_y + 7, val)
-        p.line(50 + (i*55), table_y, 50 + (i*55), table_y + 22)
+        p.drawCentredString(77 + (i*55), table_y + 7, val); p.line(50 + (i*55), table_y, 50 + (i*55), table_y + 22)
     p.line(545, table_y, 545, table_y + 22)
 
     p.setFont("Helvetica-Oblique", 9); p.drawCentredString(w/2, 40, "- Page 2 -")
     p.showPage(); p.save(); buffer.seek(0)
     return buffer
 
-# --- 메인 실행부 (Streamlit) ---
+# --- 메인 실행부 ---
 df = load_my_data()
 if df is not None:
-    # 프로그램 상단 로고 및 타이틀 수평 정렬
+    # [수정] 선정 프로그램 헤더: 로고를 더 아래로 정렬
     header_col1, header_col2 = st.columns([1.2, 4])
     with header_col1:
         if os.path.exists("logo.png"):
-            st.image("logo.png", width=180) # 로고 크기 확대
+            # 이미지 상단에 여백을 주어 아래로 내림
+            st.write("##") 
+            st.image("logo.png", width=180)
     with header_col2:
-        # 텍스트 상단 margin을 주어 로고와 수평을 맞춤
-        st.markdown("<h1 style='margin-top: 12px;'>루트에어 송풍기 선정 시스템 V7.6</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='margin-top: 25px;'>루트에어 송풍기 선정 시스템 V7.7</h1>", unsafe_allow_html=True)
     
     st.divider()
     
-    # 프로젝트 정보 입력
+    # 프로젝트 정보 입력부
     st.subheader("📋 Project Information")
     c1, c2, c3, c4 = st.columns(4)
     p_name = c1.text_input("Project Name", placeholder="English Only")
@@ -152,7 +146,6 @@ if df is not None:
     m_name = c3.text_input("Manager", placeholder="English Only")
     p_date = c4.date_input("Date", datetime.now())
 
-    # 설계 및 차트 출력
     st.subheader("🎯 Design Duty")
     col1, col2, col3 = st.columns(3)
     u_cmh = col1.number_input("Design Flow (CMH)", value=115000)
@@ -173,4 +166,4 @@ if df is not None:
     pdf_file = create_final_pdf(p_info, model_data, chart_img, noise_img, d_point)
     st.download_button(label="📥 Download Final Technical Report (2-Pages PDF)", data=pdf_file, file_name=f"Report_{p_info['project']}.pdf", mime="application/pdf")
 else:
-    st.error("데이터 파일('fan_performance_map_full_sample.csv')을 찾을 수 없습니다.")
+    st.error("데이터 파일을 찾을 수 없습니다.")
