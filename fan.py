@@ -11,16 +11,14 @@ import numpy as np
 from datetime import datetime
 
 # 페이지 설정
-st.set_page_config(page_title="루트에어 선정 시스템 V6.9", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V7.0", layout="wide")
 
 # 1. 데이터 로드 함수
 def load_my_data():
     target_file = 'fan_performance_map_full_sample.csv'
     if os.path.exists(target_file):
-        try:
-            return pd.read_csv(target_file, encoding='utf-8-sig')
-        except:
-            return pd.read_csv(target_file, encoding='cp949')
+        try: return pd.read_csv(target_file, encoding='utf-8-sig')
+        except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
 # 2. 메인 성능 맵 생성
@@ -32,7 +30,8 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     for rpm in rpms:
         data = model_df[model_df['rpm'] == rpm]
         ax.plot(data['CMH'], data['Pa'], color='steelblue', linewidth=1.2, alpha=0.5)
-        ax.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=8, fontweight='bold', alpha=0.7)
+        ax.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', 
+                color='steelblue', fontsize=8, fontweight='bold', alpha=0.7)
 
     x_path = np.linspace(0, user_cmh * 1.1, 100)
     k = user_pa / (user_cmh**2) if user_cmh != 0 else 0
@@ -43,8 +42,6 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     ax.axhline(user_pa, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax.scatter(user_cmh, user_pa, color='red', s=150, edgecolors='white', zorder=30, label='Design Point')
 
-    ax.set_xlim(0, max(user_cmh * 1.5, model_df['CMH'].max() * 1.1))
-    ax.set_ylim(0, max(user_pa * 1.5, model_df['Pa'].max() * 1.1))
     ax.set_xlabel('Flow (CMH)', fontweight='bold')
     ax.set_ylabel('Pressure (Pa)', fontweight='bold')
     ax.set_title(f"Performance Map: {selected_model}", fontsize=15, fontweight='bold')
@@ -63,78 +60,90 @@ def create_noise_chart(noise_row):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150); buf.seek(0); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (수직 배치 & 격자 표 적용)
+# 4. PDF 리포트 생성 (로고 추가 버전)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     w, h = A4
     
-    p.setFont("Helvetica-Bold", 22); p.drawString(50, h-50, "Technical Selection Report")
-    p.line(50, h-60, 545, h-60)
-
-    # [수정 2] 수직 배치 레이아웃
-    # 섹션 1: Project Information
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-85, "[1] Project Information")
-    p.setFont("Helvetica", 10)
-    p.drawString(60, h-105, f"Project Name: {p_info['project']}")
-    p.drawString(60, h-120, f"Customer: {p_info['customer']}")
-    p.drawString(60, h-135, f"Engineer: {p_info['manager']}")
-    p.drawString(60, h-150, f"Date: {p_info['date']}")
-
-    # 섹션 2: Design & Performance (수직으로 이어서 배치)
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-185, "[2] Design & Performance")
-    p.setFont("Helvetica", 10)
-    p.drawString(60, h-205, f"Selected Model: {model_data['model_name']}")
-    p.drawString(60, h-220, f"Operating Speed: {model_data['rpm']} RPM")
-    p.drawString(60, h-235, f"Design Flow: {d_point['cmh']:,} CMH / Design Pressure: {d_point['pa']:,} Pa")
-    p.drawString(60, h-250, f"Absorbed Power: {model_data['power (kW)']} kW / Total Efficiency: {model_data['total efficiency (%)']}%")
-
-    # 그래프 배치
-    p.drawImage(ImageReader(chart_buf), 45, h-620, width=500, height=350)
-
-    # [수정 3] 소음 데이터 섹션 및 격자 표
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-645, "[3] Acoustic Analysis")
-    p.drawImage(ImageReader(noise_buf), 50, h-780, width=490, height=130)
+    # [추가] 회사 로고 배치 (좌측 상단)
+    logo_path = "logo.png"
+    if os.path.exists(logo_path):
+        p.drawImage(logo_path, 50, h-75, width=120, preserveAspectRatio=True, mask='auto')
     
-    # 표(Table) 그리기 (세로선 추가)
-    table_y = h-810
-    p.setLineWidth(1); p.setStrokeColor(colors.black)
-    p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 18, fill=1) # 헤더 배경
+    # 타이틀 (로고 옆으로 이동)
+    p.setFont("Helvetica-Bold", 20)
+    p.drawRightString(545, h-60, "Technical Selection Report")
+    p.line(50, h-85, 545, h-85)
+
+    # 섹션 1: Project Information (수직 배치)
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-110, "[1] Project Information")
+    p.setFont("Helvetica", 10)
+    p.drawString(60, h-130, f"Project Name: {p_info['project']}")
+    p.drawString(60, h-145, f"Customer: {p_info['customer']}")
+    p.drawString(60, h-160, f"Engineer: {p_info['manager']}")
+    p.drawString(60, h-175, f"Date: {p_info['date']}")
+
+    # 섹션 2: Design & Performance (수직 배치)
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-210, "[2] Design & Performance")
+    p.setFont("Helvetica", 10)
+    p.drawString(60, h-230, f"Selected Model: {model_data['model_name']}")
+    p.drawString(60, h-245, f"Operating Speed: {model_data['rpm']} RPM")
+    p.drawString(60, h-260, f"Design Flow: {d_point['cmh']:,} CMH / Design Pressure: {d_point['pa']:,} Pa")
+    p.drawString(60, h-275, f"Absorbed Power: {model_data['power (kW)']} kW / Total Efficiency: {model_data['total efficiency (%)']}%")
+
+    # 성능 그래프
+    p.drawImage(ImageReader(chart_buf), 45, h-630, width=500, height=350)
+
+    # 섹션 3: 소음 데이터 및 격자 표
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-655, "[3] Acoustic Analysis")
+    p.drawImage(ImageReader(noise_buf), 50, h-790, width=490, height=130)
+    
+    # 격자 표(Grid Table) 그리기
+    table_y = h-815
+    p.setLineWidth(0.5); p.setStrokeColor(colors.black)
+    p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 18, fill=1)
     p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 9)
     
     labels = ['63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', 'Total']
     for i, b in enumerate(labels):
         p.drawString(55 + (i*55), table_y + 5, b)
-        p.line(50 + (i*55), table_y, 50 + (i*55), table_y + 18) # 헤더 세로선
-    p.line(545, table_y, 545, table_y + 18) # 헤더 마지막 세로선
+        p.line(50 + (i*55), table_y, 50 + (i*55), table_y + 18)
+    p.line(545, table_y, 545, table_y + 18)
     
     p.setFont("Helvetica", 9); table_y -= 18
-    p.rect(50, table_y, 495, 18, fill=0) # 데이터 칸 가로 테두리
+    p.rect(50, table_y, 495, 18, fill=0)
     noise_cols = ['63Hz(dB / dB(A))', '125Hz(dB / dB(A))', '250Hz(dB / dB(A))', '500Hz(dB / dB(A))',
                   '1kHz(dB / dB(A))', '2kHz(dB / dB(A))', '4kHz(dB / dB(A))', '8kHz(dB / dB(A))', 'Total_dB / dB(A)']
     for i, col in enumerate(noise_cols):
         val = str(model_data[col]).split('/')[0].strip() + " dB"
         p.drawString(55 + (i*55), table_y + 5, val)
-        p.line(50 + (i*55), table_y, 50 + (i*55), table_y + 18) # 데이터 세로선
-    p.line(545, table_y, 545, table_y + 18) # 데이터 마지막 세로선
+        p.line(50 + (i*55), table_y, 50 + (i*55), table_y + 18)
+    p.line(545, table_y, 545, table_y + 18)
 
     p.showPage(); p.save(); buffer.seek(0)
     return buffer
 
-# --- 메인 실행부 ---
+# --- 메인 실행부 (Streamlit) ---
 df = load_my_data()
 if df is not None:
-    st.title("🏢 루트에어 송풍기 선정 시스템 V6.9")
+    st.title("🏢 루트에어 송풍기 선정 시스템 V7.0")
+    
+    # 화면 로고 표시
+    if os.path.exists("logo.png"):
+        st.image("logo.png", width=200)
+    
     st.divider()
     
+    # 프로젝트 정보 입력 (Placeholder 적용)
     st.subheader("📋 Project Information")
     c1, c2, c3, c4 = st.columns(4)
-    # [수정 1] English Only 가이드 및 N/A 처리 로직
     p_name = c1.text_input("Project Name", placeholder="English Only")
     c_name = c2.text_input("Customer", placeholder="English Only")
     m_name = c3.text_input("Manager", placeholder="English Only")
     p_date = c4.date_input("Date", datetime.now())
 
+    # 설계 조건 및 모델 선택
     st.subheader("🎯 Design Duty")
     col1, col2, col3 = st.columns(3)
     u_cmh = col1.number_input("Design Flow (CMH)", value=115000)
@@ -142,6 +151,8 @@ if df is not None:
     selected_model = col3.selectbox("Select Model", df['model_name'].unique())
     
     model_data = df[df['model_name'] == selected_model].iloc[0]
+    
+    # 화면 그래프 출력
     chart_img = create_master_chart(df, selected_model, u_cmh, u_pa)
     st.image(chart_img)
     
@@ -149,7 +160,7 @@ if df is not None:
     st.subheader("🔊 Noise Data Analysis")
     st.image(noise_img)
     
-    # PDF 데이터 준비 (N/A 처리)
+    # PDF 생성 및 다운로드 (N/A 로직 포함)
     p_info = {
         "project": p_name if p_name else "N/A",
         "customer": c_name if c_name else "N/A",
@@ -162,7 +173,7 @@ if df is not None:
     st.download_button(
         label="📥 Download Final Technical Report (PDF)",
         data=pdf_file,
-        file_name=f"Technical_Report_{p_info['project']}.pdf",
+        file_name=f"Report_{p_info['project']}.pdf",
         mime="application/pdf"
     )
 else:
