@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 페이지 설정
-st.set_page_config(page_title="루트에어 선정 시스템 V7.7", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V7.8", layout="wide")
 
 # 1. 데이터 로드 함수
 def load_my_data():
@@ -21,7 +21,7 @@ def load_my_data():
         except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
-# 2. 메인 성능 맵 생성 (2페이지 분량에 맞춰 고해상도 출력)
+# 2. 메인 성능 맵 생성
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     model_df = all_df[all_df['model_name'] == selected_model].sort_values(by=['rpm', 'CMH'])
     rpms = sorted(model_df['rpm'].unique())
@@ -58,42 +58,39 @@ def create_noise_chart(noise_row):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150); buf.seek(0); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (로고 위치 하향 조정 및 우측 배치)
+# 4. PDF 리포트 생성 (Date 위치 조정)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     w, h = A4
     
-    # [수정] PDF 헤더: 로고를 글씨 높이에 맞춰 더 아래로 내림
     logo_path = "logo.png"
     p.setFont("Helvetica-Bold", 22)
     p.drawString(50, h-60, "Technical Selection Report")
     
     if os.path.exists(logo_path):
-        # h-75에서 h-82로 좌표를 내려서 글씨와 수평을 맞춤
         p.drawImage(logo_path, w-180, h-82, width=130, preserveAspectRatio=True, mask='auto')
     
     p.setLineWidth(1.5); p.line(50, h-90, w-50, h-90)
 
-    # 1페이지 내용 배치
+    # [수정] Date 위치를 가장 상단으로 이동
     p.setFont("Helvetica-Bold", 12); p.drawString(50, h-120, "[1] Project Information")
     p.setFont("Helvetica", 10.5)
-    p.drawString(65, h-145, f"Project Name : {p_info['project']}")
-    p.drawString(65, h-165, f"Customer : {p_info['customer']}")
-    p.drawString(65, h-185, f"Engineer : {p_info['manager']}")
-    p.drawString(w-150, h-185, f"Date : {p_info['date']}")
+    p.drawString(65, h-145, f"Date : {p_info['date']}") # Date가 가장 먼저 나옴
+    p.drawString(65, h-165, f"Project Name : {p_info['project']}")
+    p.drawString(65, h-185, f"Customer : {p_info['customer']}")
+    p.drawString(65, h-205, f"Engineer : {p_info['manager']}")
 
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-225, "[2] Design & Performance")
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-245, "[2] Design & Performance")
     p.setFont("Helvetica", 10.5)
-    p.drawString(65, h-250, f"Selected Model : {model_data['model_name']}")
-    p.drawString(65, h-270, f"Operating Speed : {model_data['rpm']} RPM")
-    p.drawString(65, h-290, f"Design Flow : {d_point['cmh']:,} CMH / Design Pressure : {d_point['pa']:,} Pa")
-    p.drawString(65, h-310, f"Absorbed Power : {model_data['power (kW)']} kW / Total Efficiency : {model_data['total efficiency (%)']}%")
+    p.drawString(65, h-270, f"Selected Model : {model_data['model_name']}")
+    p.drawString(65, h-290, f"Operating Speed : {model_data['rpm']} RPM")
+    p.drawString(65, h-310, f"Design Flow : {d_point['cmh']:,} CMH / Design Pressure : {d_point['pa']:,} Pa")
+    p.drawString(65, h-330, f"Absorbed Power : {model_data['power (kW)']} kW / Total Efficiency : {model_data['total efficiency (%)']}%")
 
-    p.drawImage(ImageReader(chart_buf), 50, h-740, width=495, height=410)
+    p.drawImage(ImageReader(chart_buf), 50, h-760, width=495, height=410)
     p.setFont("Helvetica-Oblique", 9); p.drawCentredString(w/2, 40, "- Page 1 -")
     
-    # 2페이지 이동
     p.showPage()
     p.setFont("Helvetica-Bold", 22); p.drawString(50, h-60, "Technical Selection Report")
     if os.path.exists(logo_path):
@@ -103,7 +100,6 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     p.setFont("Helvetica-Bold", 12); p.drawString(50, h-120, "[3] Acoustic Analysis")
     p.drawImage(ImageReader(noise_buf), 50, h-450, width=495, height=280)
     
-    # 소음 표 격자
     table_y = h-520
     p.setLineWidth(0.5); p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 22, fill=1)
     p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 9.5)
@@ -123,28 +119,26 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     p.showPage(); p.save(); buffer.seek(0)
     return buffer
 
-# --- 메인 실행부 ---
+# --- 메인 실행부 (Streamlit) ---
 df = load_my_data()
 if df is not None:
-    # [수정] 선정 프로그램 헤더: 로고를 더 아래로 정렬
     header_col1, header_col2 = st.columns([1.2, 4])
     with header_col1:
         if os.path.exists("logo.png"):
-            # 이미지 상단에 여백을 주어 아래로 내림
             st.write("##") 
             st.image("logo.png", width=180)
     with header_col2:
-        st.markdown("<h1 style='margin-top: 25px;'>루트에어 송풍기 선정 시스템 V7.7</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='margin-top: 25px;'>루트에어 송풍기 선정 시스템 V7.8</h1>", unsafe_allow_html=True)
     
     st.divider()
     
-    # 프로젝트 정보 입력부
     st.subheader("📋 Project Information")
     c1, c2, c3, c4 = st.columns(4)
-    p_name = c1.text_input("Project Name", placeholder="English Only")
-    c_name = c2.text_input("Customer", placeholder="English Only")
-    m_name = c3.text_input("Manager", placeholder="English Only")
-    p_date = c4.date_input("Date", datetime.now())
+    # 화면에서도 Date를 앞쪽으로 배치
+    p_date = c1.date_input("Date", datetime.now())
+    p_name = c2.text_input("Project Name", placeholder="English Only")
+    c_name = c3.text_input("Customer", placeholder="English Only")
+    m_name = c4.text_input("Manager", placeholder="English Only")
 
     st.subheader("🎯 Design Duty")
     col1, col2, col3 = st.columns(3)
@@ -164,6 +158,6 @@ if df is not None:
     d_point = {"cmh": u_cmh, "pa": u_pa}
     
     pdf_file = create_final_pdf(p_info, model_data, chart_img, noise_img, d_point)
-    st.download_button(label="📥 Download Final Technical Report (2-Pages PDF)", data=pdf_file, file_name=f"Report_{p_info['project']}.pdf", mime="application/pdf")
+    st.download_button(label="📥 Download Updated Technical Report (PDF)", data=pdf_file, file_name=f"Report_{p_info['project']}.pdf", mime="application/pdf")
 else:
     st.error("데이터 파일을 찾을 수 없습니다.")
