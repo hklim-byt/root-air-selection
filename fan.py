@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 페이지 설정
-st.set_page_config(page_title="루트에어 선정 시스템 V8.1", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.2", layout="wide")
 
 # 1. 데이터 로드 함수
 def load_my_data():
@@ -21,11 +21,12 @@ def load_my_data():
         except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
-# 소음 데이터를 안전하게 추출하는 보조 함수 (KeyError 방지)
+# [신규] 소음 데이터를 키워드로 안전하게 찾는 함수 (에러 방지 핵심)
 def get_noise_val(model_data, keyword):
     for col in model_data.index:
-        if keyword in col:
-            return str(model_data[col]).split('/')[0].strip().replace('dB', '')
+        if keyword.lower() in col.lower():
+            val = str(model_data[col]).split('/')[0].strip()
+            return val.replace('dB', '').strip()
     return "0"
 
 # 2. 메인 성능 맵 생성 (서징 영역 0부터 시작)
@@ -43,9 +44,9 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
         surge_x.append(data['CMH'].iloc[0])
         surge_y.append(data['Pa'].iloc[0])
 
-    # 서징 라인 연장
+    # 서징 영역을 풍량 0부터 시작하도록 연장
     extended_surge_x = [0] + surge_x
-    extended_surge_y = [surge_y[0] * 0.85] + surge_y
+    extended_surge_y = [surge_y[0] * 0.85] + surge_y 
     ax.plot(extended_surge_x, extended_surge_y, 'r--', linewidth=2.5, label='Surge Line', zorder=5)
     ax.fill_betweenx(extended_surge_y, 0, extended_surge_x, color='red', alpha=0.07, zorder=0)
 
@@ -56,7 +57,11 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     y_path = k * (x_path**2)
     ax.plot(x_path, y_path, color='#1f77b4', linewidth=4, label='System Resistance')
 
+    # 설계점
+    ax.axvline(user_cmh, color='red', linestyle='--', linewidth=1, alpha=0.4)
+    ax.axhline(user_pa, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax.scatter(user_cmh, user_pa, color='red', s=150, edgecolors='white', zorder=30, label='Design Point')
+
     ax.set_xlim(0, x_max); ax.set_ylim(0, max(user_pa * 1.5, model_df['Pa'].max()))
     ax.set_xlabel('Flow (CMH)', fontweight='bold'); ax.set_ylabel('Pressure (Pa)', fontweight='bold')
     ax.set_title(f"Performance Map: {selected_model}", fontsize=16, fontweight='bold', pad=20)
@@ -77,7 +82,7 @@ def create_noise_chart(model_data):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150); buf.seek(0); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성
+# 4. PDF 리포트 생성 (V7.9 레이아웃 유지)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
@@ -88,7 +93,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
         p.drawImage(logo_path, w-180, h-82, width=130, preserveAspectRatio=True, mask='auto')
     p.setLineWidth(1.5); p.line(50, h-90, w-50, h-90)
 
-    # Project Info
+    # [1] Project Information (Date 상단)
     p.setFont("Helvetica-Bold", 12); p.drawString(50, h-120, "[1] Project Information")
     p.setFont("Helvetica", 10.5)
     p.drawString(65, h-145, f"Date : {p_info['date']}")
@@ -96,7 +101,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     p.drawString(65, h-185, f"Customer : {p_info['customer']}")
     p.drawString(65, h-205, f"Engineer : {p_info['manager']}")
 
-    # Performance
+    # [2] Design & Performance
     p.setFont("Helvetica-Bold", 12); p.drawString(50, h-245, "[2] Design & Performance")
     p.setFont("Helvetica", 10.5)
     p.drawString(65, h-270, f"Selected Model : {model_data['model_name']}")
@@ -107,7 +112,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     p.drawImage(ImageReader(chart_buf), 50, h-760, width=495, height=410)
     p.setFont("Helvetica-Oblique", 9); p.drawCentredString(w/2, 40, "- Page 1 -")
     
-    p.showPage()
+    p.showPage() # 2페이지
     p.setFont("Helvetica-Bold", 22); p.drawString(50, h-60, "Technical Selection Report")
     if os.path.exists(logo_path):
         p.drawImage(logo_path, w-180, h-82, width=130, preserveAspectRatio=True, mask='auto')
@@ -115,7 +120,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     p.setFont("Helvetica-Bold", 12); p.drawString(50, h-120, "[3] Acoustic Analysis")
     p.drawImage(ImageReader(noise_buf), 50, h-450, width=495, height=280)
     
-    # 표 생성 (안전한 데이터 추출 적용)
+    # 소음 표 생성
     table_y = h-520
     p.setLineWidth(0.5); p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 22, fill=1)
     p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 9.5)
@@ -145,7 +150,7 @@ if df is not None:
         if os.path.exists("logo.png"):
             st.write("##"); st.image("logo.png", width=180)
     with header_col2:
-        st.markdown("<h1 style='margin-top: 25px;'>루트에어 송풍기 선정 시스템 V8.1</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='margin-top: 25px;'>루트에어 선정 시스템 V8.2</h1>", unsafe_allow_html=True)
     
     st.divider()
     c1, c2, c3, c4 = st.columns(4)
