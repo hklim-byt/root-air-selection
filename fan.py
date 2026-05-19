@@ -11,40 +11,16 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드
-st.set_page_config(page_title="루트에어 선정 시스템 V8.0.1", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V7.9.8", layout="wide")
 
 def load_my_data():
-    target_file = 'fan_performance_map_full_sample_R2.csv' 
+    target_file = 'fan_performance_map_full_sample.csv' 
     if os.path.exists(target_file):
         try: return pd.read_csv(target_file, encoding='utf-8-sig')
         except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
-# [버그 수정] 주파수별로 고유한 소음 데이터(dB / dB(A))를 1:1 정밀 매칭하여 매핑하는 함수
-def get_exact_noise_pair(model_data, keyword):
-    # 키워드별 매칭할 CSV 파일의 정확한 컬럼명 맵 정의
-    column_mapping = {
-        '63': '63Hz(dB / dB(A))',
-        '125': '125Hz(dB / dB(A))',
-        '250': '250Hz(dB / dB(A))',
-        '500': '500Hz(dB / dB(A))',
-        '1k': '1kHz(dB / dB(A))',
-        '2k': '2kHz(dB / dB(A))',
-        '4k': '4kHz(dB / dB(A))',
-        '8k': '8kHz(dB / dB(A))',
-        'total': 'Total_dB / dB(A)'
-    }
-    
-    target_col = column_mapping.get(keyword.lower())
-    if target_col and target_col in model_data.index:
-        val = str(model_data[target_col]).strip()
-        val = val.replace('dB(A)', '').replace('dB', '').strip()
-        if '/' in val:
-            parts = val.split('/')
-            return parts[0].strip(), parts[1].strip()
-        return val, val
-        
-    # 만약 맵 매칭에 실패하면 차선책으로 partial 검색 수행
+def get_noise_pair_safe(model_data, keyword):
     for col in model_data.index:
         if keyword.lower() in col.lower():
             val = str(model_data[col]).strip()
@@ -55,63 +31,45 @@ def get_exact_noise_pair(model_data, keyword):
             return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (V7.9 오리지널 서징 로직 유지)
+# 2. 메인 성능 맵 생성 (V7.9 로직 유지)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
-    active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)].sort_values(by=['rpm', 'CMH'])
-    rpms = sorted(active_df['rpm'].unique())
+    model_df = all_df[all_df['model_name'] == selected_model].sort_values(by=['rpm', 'CMH'])
+    rpms = sorted(model_df['rpm'].unique())
     fig, ax = plt.subplots(figsize=(10, 7))
-    
     surge_x, surge_y = [], []
     for rpm in rpms:
-        data = active_df[active_df['rpm'] == rpm]
-        if len(data) > 0:
-            ax.plot(data['CMH'], data['Pa'], color='steelblue', linewidth=1.2, alpha=0.5)
-            ax.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=9, va='center')
-            surge_x.append(data['CMH'].iloc[0]); surge_y.append(data['Pa'].iloc[0])
-            
-    if surge_x:
-        ax.plot(surge_x, surge_y, 'r--', linewidth=2.5, label='Surge Line')
-        ax.fill_betweenx(surge_y, 0, surge_x, color='red', alpha=0.07)
-
-    x_max = max(user_cmh * 1.3, active_df['CMH'].max() if not active_df.empty else 1000)
+        data = model_df[model_df['rpm'] == rpm]
+        ax.plot(data['CMH'], data['Pa'], color='steelblue', linewidth=1.2, alpha=0.5)
+        ax.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=9, va='center')
+        surge_x.append(data['CMH'].iloc[0]); surge_y.append(data['Pa'].iloc[0])
+    ax.plot(surge_x, surge_y, 'r--', linewidth=2.5, label='Surge Line')
+    ax.fill_betweenx(surge_y, 0, surge_x, color='red', alpha=0.07)
+    x_max = max(user_cmh * 1.3, model_df['CMH'].max())
     x_path = np.linspace(0, x_max, 100)
     k = user_pa / (user_cmh**2) if user_cmh != 0 else 0
     ax.plot(x_path, k*(x_path**2), color='#1f77b4', linewidth=4, label='System Resistance')
     ax.scatter(user_cmh, user_pa, color='red', s=150, edgecolors='white', zorder=30)
-
-    ax.set_xlim(0, x_max)
-    ax.set_ylim(0, max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000))
+    ax.set_xlim(0, x_max); ax.set_ylim(0, max(user_pa * 1.5, model_df['Pa'].max()))
     ax.set_xlabel('Flow (CMH)'); ax.set_ylabel('Pressure (Pa)')
     ax.set_title(f"Performance Map: {selected_model}", fontsize=15, fontweight='bold')
     ax.grid(True, linestyle=':', alpha=0.5); ax.legend(loc='upper right')
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=200, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 3. 소음 통합 그래프 생성 (정밀 매칭 데이터 반영 및 스케일 조정)
+# 3. 소음 그래프 생성
 def create_noise_chart(model_data):
     bands = ['63', '125', '250', '500', '1k', '2k', '4k', '8k', 'Total']
     db_vals, dba_vals = [], []
     for b in bands:
-        db, dba = get_exact_noise_pair(model_data, b)
+        db, dba = get_noise_pair_safe(model_data, b)
         try: db_vals.append(float(db)); dba_vals.append(float(dba))
         except: db_vals.append(0.0); dba_vals.append(0.0)
-        
     fig, ax1 = plt.subplots(figsize=(10, 5))
-    # dB 막대 그래프
     ax1.bar(bands, db_vals, color='skyblue', alpha=0.6, label='Noise Level (dB)')
-    # dB(A) 꺾은선 그래프
     ax1.plot(bands, dba_vals, color='red', marker='o', linewidth=2, label='Weighting (dB(A))')
-    
-    # 그래프 텍스트가 잘리지 않도록 y축 범위를 데이터 최대값의 여유있게 설정
-    max_val = max(max(db_vals), max(dba_vals)) if db_vals else 100
-    ax1.set_ylim(0, max_val * 1.2)
-    
     for i, (v1, v2) in enumerate(zip(db_vals, dba_vals)):
-        ax1.text(i, v1 + 1.5, f'{int(v1)}', ha='center', color='blue', fontsize=9, fontweight='bold')
-        ax1.text(i, v2 - 4.5, f'{int(v2)}', ha='center', color='red', fontsize=9, fontweight='bold')
-        
-    ax1.set_ylabel('Sound Level (dB / dB(A))', fontweight='bold')
-    ax1.set_title('Octave Band Analysis (including Total)', fontsize=14, fontweight='bold')
+        ax1.text(i, v1 + 1, f'{int(v1)}', ha='center', color='blue', fontsize=9, fontweight='bold')
+        ax1.text(i, v2 - 4, f'{int(v2)}', ha='center', color='red', fontsize=9, fontweight='bold')
     ax1.legend(loc='upper right'); plt.tight_layout()
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
@@ -170,10 +128,11 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     curr_x += col_widths[0]
     
     for i, kw in enumerate(['63', '125', '250', '500', '1k', '2k', '4k', '8k', 'Total']):
-        db, dba = get_exact_noise_pair(model_data, kw)
+        db, dba = get_noise_pair_safe(model_data, kw)
         p.drawCentredString(curr_x + col_widths[i+1]/2, table_y + 7, f"{db} / {dba}")
         curr_x += col_widths[i+1]
     
+    # 격자 선 그리기
     curr_x = 50
     for w_val in col_widths:
         p.line(curr_x, table_y, curr_x, table_y + 44)
@@ -184,22 +143,25 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     p.showPage(); p.save(); buffer.seek(0)
     return buffer
 
-# --- 메인 실행부 (Streamlit UI) ---
+# --- 메인 실행부 ---
 df = load_my_data()
 if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.0.1")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V7.9.8")
     
     st.divider()
     
+    # [수정] 입력 필드에 placeholder 추가 및 N/A 처리 로직
     col_a, col_b, col_c, col_d = st.columns(4)
     p_date = col_a.date_input("Date", datetime.now())
+    # placeholder가 'English Only' 회색 가이드 문구 역할을 합니다.
     p_name_raw = col_b.text_input("Project Name", placeholder="English Only")
     cust_name_raw = col_c.text_input("Customer", placeholder="English Only")
     mgr_name_raw = col_d.text_input("Manager", placeholder="English Only")
     
+    # 입력이 없으면 'N/A'로 할당
     p_name = p_name_raw if p_name_raw.strip() != "" else "N/A"
     cust_name = cust_name_raw if cust_name_raw.strip() != "" else "N/A"
     mgr_name = mgr_name_raw if mgr_name_raw.strip() != "" else "N/A"
@@ -209,12 +171,7 @@ if df is not None:
     u_pa = col_2.number_input("Design Pressure (Pa)", value=2100)
     selected_model = col_3.selectbox("Select Model", df['model_name'].unique())
     
-    # 선택된 모델의 데이터 중, 가상 정지 데이터(rpm=0)를 제외한 첫 번째 유효 운전 데이터를 추출
-    valid_model_rows = df[(df['model_name'] == selected_model) & (df['rpm'] > 0)]
-    if not valid_model_rows.empty:
-        model_data = valid_model_rows.iloc[0]
-    else:
-        model_data = df[df['model_name'] == selected_model].iloc[0]
+    model_data = df[df['model_name'] == selected_model].iloc[0]
     
     chart_buf = create_master_chart(df, selected_model, u_cmh, u_pa)
     noise_buf = create_noise_chart(model_data)
@@ -224,6 +181,6 @@ if df is not None:
     
     p_info = {"project": p_name, "customer": cust_name, "manager": mgr_name, "date": p_date.strftime("%Y-%m-%d")}
     pdf_file = create_final_pdf(p_info, model_data, chart_buf, noise_buf, {"cmh": u_cmh, "pa": u_pa})
-    st.download_button("📥 Download Final Technical Report", pdf_file, f"Report_{p_info['project']}.pdf")
+    st.download_button("📥 Download Final Technical Report", pdf_file, f"Report_{p_name}.pdf")
 else:
-    st.error("⚠️ 데이터 파일('fan_performance_map_full_sample_R2.csv')을 찾을 수 없습니다.")
+    st.error("데이터 파일을 로드할 수 없습니다.")
