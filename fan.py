@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드
-st.set_page_config(page_title="루트에어 선정 시스템 V8.0.0", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.0.1", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_R2.csv' 
@@ -20,8 +20,31 @@ def load_my_data():
         except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
-# [긴급 수정] 데이터셋에서 실제 유효한(0/0이 아닌) 소음 컬럼을 찾아 매칭하는 함수
-def get_noise_pair_safe(model_data, keyword):
+# [버그 수정] 주파수별로 고유한 소음 데이터(dB / dB(A))를 1:1 정밀 매칭하여 매핑하는 함수
+def get_exact_noise_pair(model_data, keyword):
+    # 키워드별 매칭할 CSV 파일의 정확한 컬럼명 맵 정의
+    column_mapping = {
+        '63': '63Hz(dB / dB(A))',
+        '125': '125Hz(dB / dB(A))',
+        '250': '250Hz(dB / dB(A))',
+        '500': '500Hz(dB / dB(A))',
+        '1k': '1kHz(dB / dB(A))',
+        '2k': '2kHz(dB / dB(A))',
+        '4k': '4kHz(dB / dB(A))',
+        '8k': '8kHz(dB / dB(A))',
+        'total': 'Total_dB / dB(A)'
+    }
+    
+    target_col = column_mapping.get(keyword.lower())
+    if target_col and target_col in model_data.index:
+        val = str(model_data[target_col]).strip()
+        val = val.replace('dB(A)', '').replace('dB', '').strip()
+        if '/' in val:
+            parts = val.split('/')
+            return parts[0].strip(), parts[1].strip()
+        return val, val
+        
+    # 만약 맵 매칭에 실패하면 차선책으로 partial 검색 수행
     for col in model_data.index:
         if keyword.lower() in col.lower():
             val = str(model_data[col]).strip()
@@ -34,7 +57,6 @@ def get_noise_pair_safe(model_data, keyword):
 
 # 2. 메인 성능 맵 생성 (V7.9 오리지널 서징 로직 유지)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
-    # RPM이 0인 정지 데이터는 제외하고 그래프 플로팅
     active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)].sort_values(by=['rpm', 'CMH'])
     rpms = sorted(active_df['rpm'].unique())
     fig, ax = plt.subplots(figsize=(10, 7))
@@ -65,22 +87,28 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=200, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 3. 소음 통합 그래프 생성 (유효 데이터 적용)
+# 3. 소음 통합 그래프 생성 (정밀 매칭 데이터 반영 및 스케일 조정)
 def create_noise_chart(model_data):
     bands = ['63', '125', '250', '500', '1k', '2k', '4k', '8k', 'Total']
     db_vals, dba_vals = [], []
     for b in bands:
-        db, dba = get_noise_pair_safe(model_data, b)
+        db, dba = get_exact_noise_pair(model_data, b)
         try: db_vals.append(float(db)); dba_vals.append(float(dba))
         except: db_vals.append(0.0); dba_vals.append(0.0)
         
     fig, ax1 = plt.subplots(figsize=(10, 5))
+    # dB 막대 그래프
     ax1.bar(bands, db_vals, color='skyblue', alpha=0.6, label='Noise Level (dB)')
+    # dB(A) 꺾은선 그래프
     ax1.plot(bands, dba_vals, color='red', marker='o', linewidth=2, label='Weighting (dB(A))')
     
+    # 그래프 텍스트가 잘리지 않도록 y축 범위를 데이터 최대값의 여유있게 설정
+    max_val = max(max(db_vals), max(dba_vals)) if db_vals else 100
+    ax1.set_ylim(0, max_val * 1.2)
+    
     for i, (v1, v2) in enumerate(zip(db_vals, dba_vals)):
-        ax1.text(i, v1 + 1, f'{int(v1)}', ha='center', color='blue', fontsize=9, fontweight='bold')
-        ax1.text(i, v2 - 4, f'{int(v2)}', ha='center', color='red', fontsize=9, fontweight='bold')
+        ax1.text(i, v1 + 1.5, f'{int(v1)}', ha='center', color='blue', fontsize=9, fontweight='bold')
+        ax1.text(i, v2 - 4.5, f'{int(v2)}', ha='center', color='red', fontsize=9, fontweight='bold')
         
     ax1.set_ylabel('Sound Level (dB / dB(A))', fontweight='bold')
     ax1.set_title('Octave Band Analysis (including Total)', fontsize=14, fontweight='bold')
@@ -142,7 +170,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     curr_x += col_widths[0]
     
     for i, kw in enumerate(['63', '125', '250', '500', '1k', '2k', '4k', '8k', 'Total']):
-        db, dba = get_noise_pair_safe(model_data, kw)
+        db, dba = get_exact_noise_pair(model_data, kw)
         p.drawCentredString(curr_x + col_widths[i+1]/2, table_y + 7, f"{db} / {dba}")
         curr_x += col_widths[i+1]
     
@@ -162,7 +190,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.0.0")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.0.1")
     
     st.divider()
     
@@ -181,7 +209,7 @@ if df is not None:
     u_pa = col_2.number_input("Design Pressure (Pa)", value=2100)
     selected_model = col_3.selectbox("Select Model", df['model_name'].unique())
     
-    # [핵심 보정] 선택된 모델의 데이터 중, 소음 수치가 0이 아닌 첫 번째 실제 운전 데이터를 추출합니다.
+    # 선택된 모델의 데이터 중, 가상 정지 데이터(rpm=0)를 제외한 첫 번째 유효 운전 데이터를 추출
     valid_model_rows = df[(df['model_name'] == selected_model) & (df['rpm'] > 0)]
     if not valid_model_rows.empty:
         model_data = valid_model_rows.iloc[0]
