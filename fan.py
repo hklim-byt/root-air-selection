@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드
-st.set_page_config(page_title="루트에어 선정 시스템 V8.1.0", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.1.1", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_R2.csv' 
@@ -20,14 +20,16 @@ def load_my_data():
         except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
-# 주파수별 고유 소음 데이터(dB / dB(A)) 1:1 정밀 매칭 함수
+# [완벽 보정] 주파수별 고유 소음 데이터(dB / dB(A)) 1:1 정밀 정치 매칭 함수 (대소문자 및 공백 완벽 방어)
 def get_exact_noise_pair(model_data, keyword):
     column_mapping = {
         '63': '63Hz(dB / dB(A))', '125': '125Hz(dB / dB(A))', '250': '250Hz(dB / dB(A))',
         '500': '500Hz(dB / dB(A))', '1k': '1kHz(dB / dB(A))', '2k': '2kHz(dB / dB(A))',
         '4k': '4kHz(dB / dB(A))', '8k': '8kHz(dB / dB(A))', 'total': 'Total_dB / dB(A)'
     }
-    target_col = column_mapping.get(keyword.lower())
+    # 입력된 keyword의 대소문자 변환 후 정확하게 딕셔너리 키 매칭
+    target_col = column_mapping.get(keyword.strip().lower())
+    
     if target_col and target_col in model_data.index:
         val = str(model_data[target_col]).strip()
         val = val.replace('dB(A)', '').replace('dB', '').strip()
@@ -37,33 +39,33 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (초록색 동력 그래프 추가 - Dual Y-Axis)
+# 2. 메인 성능 맵 생성 (초록색 동력 그래프 추가 - Dual Y-Axis 방식)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)].sort_values(by=['rpm', 'CMH'])
     rpms = sorted(active_df['rpm'].unique())
     
     fig, ax1 = plt.subplots(figsize=(10, 7))
     
-    # 오른쪽 축 생성 (동력용 초록색 Y축)
+    # 오른쪽 축 생성 (동력용 초록색 Y축 배치)
     ax2 = ax1.twinx()
     
     surge_x, surge_y = [], []
     
-    # RPM별 풍압(정압) 및 동력 곡선 그리기
+    # RPM별 풍압(정압) 및 동력 곡선 동시 플로팅
     for rpm in rpms:
         data = active_df[active_df['rpm'] == rpm]
         if len(data) > 0:
-            # 1. 왼쪽 Y축: 정압 곡선 (steelblue)
+            # 1. 왼쪽 Y축: 정압 곡선 (원래 선호하시던 steelblue 테마 색상)
             ax1.plot(data['CMH'], data['Pa'], color='steelblue', linewidth=1.2, alpha=0.5)
             ax1.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=9, va='center')
             
-            # 2. 오른쪽 Y축: 동력 곡선 (초록색 점선/실선)
+            # 2. 오른쪽 Y축: 동력(Shaft Power) 곡선 (요청하신 초록색 점선 플로팅)
             ax2.plot(data['CMH'], data['power (kW)'], color='g', linewidth=1.0, linestyle=':', alpha=0.4)
             
             surge_x.append(data['CMH'].iloc[0])
             surge_y.append(data['Pa'].iloc[0])
             
-    # 서징 라인 및 영역 (왼쪽 정압 축 기준)
+    # 서징 라인 및 영역 (왼쪽 정압 축 기준 배치)
     if surge_x:
         ax1.plot(surge_x, surge_y, 'r--', linewidth=2.5, label='Surge Line')
         ax1.fill_betweenx(surge_y, 0, surge_x, color='red', alpha=0.07)
@@ -74,12 +76,12 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     k = user_pa / (user_cmh**2) if user_cmh != 0 else 0
     ax1.plot(x_path, k*(x_path**2), color='#1f77b4', linewidth=4, label='System Resistance')
     
-    # 설계점 마킹
+    # 설계점 마킹 가이드선
     ax1.axvline(user_cmh, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.axhline(user_pa, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.scatter(user_cmh, user_pa, color='red', s=150, edgecolors='white', zorder=30)
 
-    # 범위 및 라벨 설정
+    # 스케일링 범위 설정
     ax1.set_xlim(0, x_max)
     ax1.set_ylim(0, max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000))
     ax2.set_ylim(0, active_df['power (kW)'].max() * 1.3 if not active_df.empty else 100)
@@ -88,7 +90,7 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     ax1.set_ylabel('Pressure (Pa)', color='steelblue', fontweight='bold')
     ax2.set_ylabel('Shaft Power (kW)', color='g', fontweight='bold')
     
-    # 축 눈금 색상 맞춤
+    # 축 틱 레이블 색상 일치화로 가독성 확보
     ax1.tick_params(axis='y', labelcolor='steelblue')
     ax2.tick_params(axis='y', labelcolor='g')
     
@@ -96,24 +98,30 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     ax1.grid(True, linestyle=':', alpha=0.5)
     ax1.legend(loc='upper left')
     
-    # 가상의 초록색 선 레이블을 범례에 추가하고 싶을 때를 위해 핸들 조절 가능
     plt.tight_layout()
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=200, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 3. 소음 통합 그래프 생성 (버그 수정 반영)
+# 3. 소음 통합 그래프 생성 (버그 완전 수정 버전)
 def create_noise_chart(model_data):
     bands = ['63', '125', '250', '500', '1k', '2k', '4k', '8k', 'Total']
     db_vals, dba_vals = [], []
     for b in bands:
         db, dba = get_exact_noise_pair(model_data, b)
-        try: db_vals.append(float(db)); dba_vals.append(float(dba))
-        except: db_vals.append(0.0); dba_vals.append(0.0)
+        try: 
+            db_vals.append(float(db))
+            dba_vals.append(float(dba))
+        except: 
+            db_vals.append(0.0)
+            dba_vals.append(0.0)
         
     fig, ax1 = plt.subplots(figsize=(10, 5))
+    # dB 막대 그래프
     ax1.bar(bands, db_vals, color='skyblue', alpha=0.6, label='Noise Level (dB)')
+    # dB(A) 꺾은선 그래프
     ax1.plot(bands, dba_vals, color='red', marker='o', linewidth=2, label='Weighting (dB(A))')
     
+    # 값 표시가 레이아웃 천장에 부딪히지 않게 여유 범위 설정
     max_val = max(max(db_vals), max(dba_vals)) if db_vals else 100
     ax1.set_ylim(0, max_val * 1.2)
     
@@ -127,7 +135,7 @@ def create_noise_chart(model_data):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성
+# 4. PDF 리포트 생성 (양식 및 규격 복구 버전)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4); w, h = A4
@@ -142,19 +150,19 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     draw_header(p)
     p.setFont("Helvetica", 10.5)
     p.drawString(65, h-130, f"Date : {p_info['date']}")
-    p.drawString(65, h-150, f"Project Name : {p_info['project']}")
-    p.drawString(65, h-170, f"Customer : {p_info['customer']}")
-    p.drawString(65, h-190, f"Engineer : {p_info['manager']}")
+    p.drawString(65, h-165, f"Project Name : {p_info['project']}")
+    p.drawString(65, h-185, f"Customer : {p_info['customer']}")
+    p.drawString(65, h-205, f"Engineer : {p_info['manager']}")
 
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-225, "[2] Design & Performance")
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-245, "[2] Design & Performance")
     p.setFont("Helvetica", 10.5)
-    p.drawString(65, h-250, f"Selected Model : {model_data['model_name']}")
-    p.drawString(65, h-270, f"Operating Speed : {int(model_data['rpm'])} RPM")
-    p.drawString(65, h-290, f"Design Flow : {d_point['cmh']:,} CMH / Design Pressure : {d_point['pa']:,} Pa")
+    p.drawString(65, h-270, f"Selected Model : {model_data['model_name']}")
+    p.drawString(65, h-290, f"Operating Speed : {int(model_data['rpm'])} RPM")
+    p.drawString(65, h-310, f"Design Flow : {d_point['cmh']:,} CMH / Design Pressure : {d_point['pa']:,} Pa")
     
     p_fan = model_data.get('power (kW)', 'N/A')
     eff = model_data.get('total efficiency (%)', 'N/A')
-    p.drawString(65, h-310, f"Absorbed Power (P fan) : {p_fan} kW / Total Efficiency : {eff}%")
+    p.drawString(65, h-330, f"Absorbed Power (P fan) : {p_fan} kW / Total Efficiency : {eff}%")
 
     chart_buf.seek(0); p.drawImage(ImageReader(chart_buf), 50, h-750, width=500, height=380)
     p.drawCentredString(w/2, 40, "- Page 1 -")
@@ -201,7 +209,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 선정 시스템 V8.1.0")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.1.1")
     
     st.divider()
     
