@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드
-st.set_page_config(page_title="루트에어 선정 시스템 V8.1.2", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.1.3", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_R2.csv' 
@@ -20,14 +20,13 @@ def load_my_data():
         except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
-# [완벽 보정] 가상 데이터를 완벽 차단하고 주파수별 리얼 소음 데이터를 추출하는 함수
+# 주파수별 고유 소음 데이터(dB / dB(A)) 1:1 정밀 매칭 함수 
 def get_exact_noise_pair(model_data, keyword):
     column_mapping = {
         '63': '63Hz(dB / dB(A))', '125': '125Hz(dB / dB(A))', '250': '250Hz(dB / dB(A))',
         '500': '500Hz(dB / dB(A))', '1k': '1kHz(dB / dB(A))', '2k': '2kHz(dB / dB(A))',
         '4k': '4kHz(dB / dB(A))', '8k': '8kHz(dB / dB(A))', 'total': 'Total_dB / dB(A)'
     }
-    
     target_col = column_mapping.get(keyword.strip().lower())
     
     if target_col and target_col in model_data.index:
@@ -39,9 +38,9 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (초록색 동력 그래프 추가 - Dual Y-Axis)
+# 2. 메인 성능 맵 생성 (초록색 동력 그래프 추가 - Dual Y-Axis) 
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
-    active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)].sort_values(by=['rpm', 'CMH'])
+    active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)].sort_values(by=['rpm', 'CMH']) 
     rpms = sorted(active_df['rpm'].unique())
     
     fig, ax1 = plt.subplots(figsize=(10, 7))
@@ -54,7 +53,7 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
             # 1. 정압 곡선 (steelblue)
             ax1.plot(data['CMH'], data['Pa'], color='steelblue', linewidth=1.2, alpha=0.5)
             ax1.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=9, va='center')
-            # 2. 동력 곡선 (초록색 점선)
+            # 2. 동력 곡선 (초록색 점선) 
             ax2.plot(data['CMH'], data['power (kW)'], color='g', linewidth=1.0, linestyle=':', alpha=0.4)
             surge_x.append(data['CMH'].iloc[0])
             surge_y.append(data['Pa'].iloc[0])
@@ -74,7 +73,7 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
 
     ax1.set_xlim(0, x_max)
     ax1.set_ylim(0, max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000))
-    ax2.set_ylim(0, active_df['power (kW)'].max() * 1.3 if not active_df.empty else 100)
+    ax2.set_ylim(0, active_df['power (kW)'].max() * 1.3 if not active_df.empty else 100) 
     
     ax1.set_xlabel('Flow (CMH)', fontweight='bold')
     ax1.set_ylabel('Pressure (Pa)', color='steelblue', fontweight='bold')
@@ -89,7 +88,7 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=200, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 3. 소음 통합 그래프 생성 (수정 패치 반영)
+# 3. 소음 통합 그래프 생성
 def create_noise_chart(model_data):
     bands = ['63', '125', '250', '500', '1k', '2k', '4k', '8k', 'Total']
     db_vals, dba_vals = [], []
@@ -140,12 +139,12 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
 
     p.setFont("Helvetica-Bold", 12); p.drawString(50, h-245, "[2] Design & Performance")
     p.setFont("Helvetica", 10.5)
-    p.drawString(65, h-270, f"Selected Model : {model_data['model_name']}")
-    p.drawString(65, h-290, f"Operating Speed : {int(model_data['rpm'])} RPM")
+    p.drawString(65, h-270, f"Selected Model : {model_data['model_name']}") 
+    p.drawString(65, h-290, f"Operating Speed : {int(model_data['rpm'])} RPM") 
     p.drawString(65, h-310, f"Design Flow : {d_point['cmh']:,} CMH / Design Pressure : {d_point['pa']:,} Pa")
     
-    p_fan = model_data.get('power (kW)', 'N/A')
-    eff = model_data.get('total efficiency (%)', 'N/A')
+    p_fan = model_data.get('power (kW)', 'N/A') 
+    eff = model_data.get('total efficiency (%)', 'N/A') 
     p.drawString(65, h-330, f"Absorbed Power (P fan) : {p_fan} kW / Total Efficiency : {eff}%")
 
     chart_buf.seek(0); p.drawImage(ImageReader(chart_buf), 50, h-750, width=500, height=380)
@@ -159,7 +158,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     p.setLineWidth(0.5); p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 22, fill=1)
     p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 8)
     
-    labels = ['(dB / dB(A))', '63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', 'Total']
+    labels = ['(dB / dB(A))', '63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', 'Total'] 
     col_widths = [75] + [46.6]*9
     
     curr_x = 50
@@ -193,7 +192,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.1.2")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.1.3")
     
     st.divider()
     
@@ -210,14 +209,17 @@ if df is not None:
     col_1, col_2, col_3 = st.columns(3)
     u_cmh = col_1.number_input("Design Flow (CMH)", value=115000)
     u_pa = col_2.number_input("Design Pressure (Pa)", value=2100)
-    selected_model = col_3.selectbox("Select Model", df['model_name'].unique())
+    selected_model = col_3.selectbox("Select Model", df['model_name'].unique()) 
     
-    # [핵심 로직 수정] 선택된 모델의 데이터 중 가상 정지 데이터(rpm=0)를 '완벽 차단'하고 실제 구동 데이터의 첫 행을 추출
-    valid_model_rows = df[(df['model_name'] == selected_model) & (df['rpm'] > 0)]
-    if not valid_model_rows.empty:
-        model_data = valid_model_rows.iloc[0]
+    # [버그 완전 소탕] 사용자가 입력한 운전점(풍량, 정압)과 거리 오차가 가장 적은 최적의 RPM 실가동 행을 동적으로 연동합니다.
+    valid_df = df[(df['model_name'] == selected_model) & (df['rpm'] > 0)].copy() 
+    if not valid_df.empty:
+        # 설계 운전점과의 오차가 가장 적은 최적의 행 계산 (유클리드 거리 기반 최적 스케일링 가중치 적용)
+        valid_df['distance'] = ((valid_df['CMH'] - u_cmh) ** 2) + ((valid_df['Pa'] - u_pa) ** 2) * 50
+        best_row_index = valid_df['distance'].idxmin()
+        model_data = valid_df.loc[best_row_index]
     else:
-        model_data = df[df['model_name'] == selected_model].iloc[0]
+        model_data = df[df['model_name'] == selected_model].iloc[0] 
     
     chart_buf = create_master_chart(df, selected_model, u_cmh, u_pa)
     noise_buf = create_noise_chart(model_data)
