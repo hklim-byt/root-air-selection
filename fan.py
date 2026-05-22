@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드 (계산 완료된 R3 보정 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.2.1", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.2.2", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_R3_populated.csv' 
@@ -68,7 +68,7 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     else:
         k2 = 400 / (75000 ** 2)
 
-    # 스케일 제한 범위 설정
+    # ス케일 제한 범위 설정
     x_max = max(user_cmh * 1.3, active_df['CMH'].max() if not active_df.empty else 1000)
     y_max = max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000)
 
@@ -81,7 +81,7 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     ax1.plot(x_contour, y_area1, color='purple', linestyle='-.', linewidth=1.8, label='Area 1 Boundary')
     ax1.plot(x_contour, y_area2, color='darkorange', linestyle='-.', linewidth=1.8, label='Area 2 Boundary')
 
-    # [수정 사항 반영] 서징 영역 대신 Area 1의 위쪽 및 Area 2의 아래쪽을 분홍색 바탕으로 셰이딩
+    # Area 1의 위쪽 및 Area 2의 아래쪽을 분홍색 바탕으로 셰이딩
     ax1.fill_between(x_contour, 0, y_area2, color='pink', alpha=0.08, zorder=0, label='Out of Bounds (Pink)')
     ax1.fill_between(x_contour, y_area1, y_max * 2, color='pink', alpha=0.08, zorder=0)
 
@@ -143,7 +143,7 @@ def create_noise_chart(model_data):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성
+# 4. PDF 리포트 생성 (생뚱맞은 번호 넘버링 완벽 제거)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4); w, h = A4
@@ -162,7 +162,8 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     p.drawString(65, h-185, f"Customer : {p_info['customer']}")
     p.drawString(65, h-205, f"Engineer : {p_info['manager']}")
 
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-245, "[2] Design & Performance")
+    # [수정] 생뚱맞은 '[2]' 번호 마킹을 아예 삭제하고 세련되게 문구만 배치했습니다.
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-245, "Design & Performance")
     p.setFont("Helvetica", 10.5)
     p.drawString(65, h-270, f"Selected Model : {model_data['model_name']}")
     p.drawString(65, h-290, f"Operating Speed : {int(model_data['rpm'])} RPM")
@@ -178,6 +179,9 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     # 2페이지
     p.showPage(); draw_header(p)
     noise_buf.seek(0); p.drawImage(ImageReader(noise_buf), 50, h-450, width=500, height=280)
+    
+    # [수정] 2페이지 소음 분석 섹션 앞의 '[3]' 도 함께 제거하여 전체 리포트의 일관성을 높였습니다.
+    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-120, "Acoustic Analysis")
     
     table_y = h-520
     p.setLineWidth(0.5); p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 22, fill=1)
@@ -217,7 +221,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.2.1")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.2.2")
     
     st.divider()
     
