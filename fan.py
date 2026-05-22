@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.3.4", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.3.5", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -58,7 +58,6 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
             
             # 2. 동력 곡선 (darkgreen) - 파선 형태
             ax2.plot(data['CMH'], data['power (kW)'], color='darkgreen', linewidth=1.2, linestyle='--', alpha=0.7)
-            # [신규 수정 적용] 동력선 좌측단(Area 1 방향, 그래프 상단 구역)에 고유 kW 수치를 정밀하게 기입합니다.
             ax2.text(data['CMH'].iloc[0], data['power (kW)'].iloc[0], f'{data["power (kW)"].iloc[0]:.1f} kW ', color='darkgreen', fontsize=8, ha='right', va='center', alpha=0.8)
 
     # 차트 스케일 상한선 계산
@@ -216,7 +215,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 선정 시스템 V8.3.4")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.3.5")
     
     st.divider()
     
@@ -243,6 +242,22 @@ if df is not None:
         model_data = valid_df.loc[best_row_index]
     else:
         model_data = df[df['model_name'] == selected_model].iloc[0]
+        
+    p_fan = model_data.get('power (kW)', 'N/A')
+    eff = model_data.get('total efficiency (%)', 'N/A')
+    calculated_rpm = int(model_data['rpm'])
+
+    # [수정 적용] 사용자가 선정값을 변경하는 즉시 화면 상단에서 파악 가능한 스코어카드 대시보드 연동
+    st.write("") 
+    res_col1, res_col2, res_col3 = st.columns(3)
+    with res_col1:
+        st.metric(label="⚙️ Calculated Operating Speed", value=f"{calculated_rpm} RPM")
+    with res_col2:
+        st.metric(label="⚡ Absorbed Power (P fan)", value=f"{p_fan} kW")
+    with res_col3:
+        st.metric(label="📊 Total Efficiency", value=f"{eff} %")
+    
+    st.divider()
     
     chart_buf = create_master_chart(df, selected_model, u_cmh, u_pa)
     noise_buf = create_noise_chart(model_data)
