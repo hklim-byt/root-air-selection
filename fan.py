@@ -10,11 +10,10 @@ from io import BytesIO
 import numpy as np
 from datetime import datetime
 
-# 1. 페이지 설정 및 데이터 로드 (계산 완료된 R3 새 파일 자동 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.2.0", layout="wide")
+# 1. 페이지 설정 및 데이터 로드 (계산 완료된 R3 보정 데이터 연동)
+st.set_page_config(page_title="루트에어 선정 시스템 V8.2.1", layout="wide")
 
 def load_my_data():
-    # 새롭게 계산되어 저장된 R3 보정 파일을 로드합니다.
     target_file = 'fan_performance_map_full_sample_R3_populated.csv' 
     if os.path.exists(target_file):
         try: return pd.read_csv(target_file, encoding='utf-8-sig')
@@ -39,7 +38,7 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (초록색 동력 곡선 + Area 1, 2 범위 저항 곡선 추가)
+# 2. 메인 성능 맵 생성 (서징 라인 제거 및 Area 1/2 기준 분홍색 범위 바탕 표시 적용)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)].sort_values(by=['rpm', 'CMH'])
     rpms = sorted(active_df['rpm'].unique())
@@ -47,7 +46,6 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     fig, ax1 = plt.subplots(figsize=(10, 7))
     ax2 = ax1.twinx() # 동력용 초록색 Y축 우측 배치
     
-    surge_x, surge_y = [], []
     for rpm in rpms:
         data = active_df[active_df['rpm'] == rpm]
         if len(data) > 0:
@@ -56,37 +54,49 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
             ax1.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=9, va='center')
             # 2. 동력 곡선 (초록색 점선)
             ax2.plot(data['CMH'], data['power (kW)'], color='g', linewidth=1.0, linestyle=':', alpha=0.4)
-            surge_x.append(data['CMH'].iloc[0])
-            surge_y.append(data['Pa'].iloc[0])
-            
-    if surge_x:
-        ax1.plot(surge_x, surge_y, 'r--', linewidth=2.5, label='Surge Line')
-        ax1.fill_betweenx(surge_y, 0, surge_x, color='red', alpha=0.07)
 
-    # [신규 기능] Area 1 및 Area 2 P-Q 저항곡선 시각화 통합
-    area_data = active_df[['rpm', 'Area 1(CMH)', 'Area 1(Pa)', 'Area 2(CMH)', 'Area 2(Pa)']].drop_duplicates().sort_values('rpm')
-    area1_x = [0] + area_data['Area 1(CMH)'].tolist()
-    area1_y = [0] + area_data['Area 1(Pa)'].tolist()
-    area2_x = [0] + area_data['Area 2(CMH)'].tolist()
-    area2_y = [0] + area_data['Area 2(Pa)'].tolist()
+    # 데이터로부터 Area 1 및 Area 2의 고유 k 지수 산출 (안정적인 커브 매핑용)
+    valid_area1 = active_df[active_df['Area 1(CMH)'] > 0]
+    if not valid_area1.empty:
+        k1 = valid_area1['Area 1(Pa)'].iloc[0] / (valid_area1['Area 1(CMH)'].iloc[0] ** 2)
+    else:
+        k1 = 2100 / (97500 ** 2)
+        
+    valid_area2 = active_df[active_df['Area 2(CMH)'] > 0]
+    if not valid_area2.empty:
+        k2 = valid_area2['Area 2(Pa)'].iloc[0] / (valid_area2['Area 2(CMH)'].iloc[0] ** 2)
+    else:
+        k2 = 400 / (75000 ** 2)
+
+    # 스케일 제한 범위 설정
+    x_max = max(user_cmh * 1.3, active_df['CMH'].max() if not active_df.empty else 1000)
+    y_max = max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000)
+
+    # 완벽한 가시화를 위해 전체 폭에 맞춘 저항 곡선 데이터 정의
+    x_contour = np.linspace(0, x_max, 200)
+    y_area1 = k1 * (x_contour ** 2)
+    y_area2 = k2 * (x_contour ** 2)
     
-    ax1.plot(area1_x, area1_y, color='purple', linestyle='-.', linewidth=1.8, label='Area 1 Boundary')
-    ax1.plot(area2_x, area2_y, color='darkorange', linestyle='-.', linewidth=1.8, label='Area 2 Boundary')
+    # Area 1, Area 2 경계선 플로팅
+    ax1.plot(x_contour, y_area1, color='purple', linestyle='-.', linewidth=1.8, label='Area 1 Boundary')
+    ax1.plot(x_contour, y_area2, color='darkorange', linestyle='-.', linewidth=1.8, label='Area 2 Boundary')
+
+    # [수정 사항 반영] 서징 영역 대신 Area 1의 위쪽 및 Area 2의 아래쪽을 분홍색 바탕으로 셰이딩
+    ax1.fill_between(x_contour, 0, y_area2, color='pink', alpha=0.08, zorder=0, label='Out of Bounds (Pink)')
+    ax1.fill_between(x_contour, y_area1, y_max * 2, color='pink', alpha=0.08, zorder=0)
 
     # 시스템 저항 곡선
-    x_max = max(user_cmh * 1.3, active_df['CMH'].max() if not active_df.empty else 1000)
     x_path = np.linspace(0, x_max, 100)
     k = user_pa / (user_cmh**2) if user_cmh != 0 else 0
     ax1.plot(x_path, k*(x_path**2), color='#1f77b4', linewidth=4, label='System Resistance')
     
-    # 설계점 마킹
+    # 설계 운전점 마킹
     ax1.axvline(user_cmh, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.axhline(user_pa, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.scatter(user_cmh, user_pa, color='red', s=150, edgecolors='white', zorder=30)
 
-    # 차트 스케일 가이드
     ax1.set_xlim(0, x_max)
-    ax1.set_ylim(0, max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000))
+    ax1.set_ylim(0, y_max)
     ax2.set_ylim(0, active_df['power (kW)'].max() * 1.3 if not active_df.empty else 100)
     
     ax1.set_xlabel('Flow (CMH)', fontweight='bold')
@@ -207,7 +217,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 선정 시스템 V8.2.0")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.2.1")
     
     st.divider()
     
@@ -226,7 +236,6 @@ if df is not None:
     u_pa = col_2.number_input("Design Pressure (Pa)", value=2100)
     selected_model = col_3.selectbox("Select Model", df['model_name'].unique())
     
-    # 설계 운전점과의 거리가 가장 가까운 유효 고속 데이터 자동 연동
     valid_df = df[(df['model_name'] == selected_model) & (df['rpm'] > 0)].copy()
     if not valid_df.empty:
         valid_df['distance'] = ((valid_df['CMH'] - u_cmh) ** 2) + ((valid_df['Pa'] - u_pa) ** 2) * 50
