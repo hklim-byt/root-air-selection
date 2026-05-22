@@ -10,17 +10,18 @@ from io import BytesIO
 import numpy as np
 from datetime import datetime
 
-# 1. 페이지 설정 및 데이터 로드
-st.set_page_config(page_title="루트에어 선정 시스템 V8.1.3", layout="wide")
+# 1. 페이지 설정 및 데이터 로드 (계산 완료된 R3 새 파일 자동 연동)
+st.set_page_config(page_title="루트에어 선정 시스템 V8.2.0", layout="wide")
 
 def load_my_data():
-    target_file = 'fan_performance_map_full_sample_R2.csv' 
+    # 새롭게 계산되어 저장된 R3 보정 파일을 로드합니다.
+    target_file = 'fan_performance_map_full_sample_R3_populated.csv' 
     if os.path.exists(target_file):
         try: return pd.read_csv(target_file, encoding='utf-8-sig')
         except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
-# 주파수별 고유 소음 데이터(dB / dB(A)) 1:1 정밀 매칭 함수 
+# 주파수별 고유 소음 데이터(dB / dB(A)) 1:1 정밀 매칭 함수
 def get_exact_noise_pair(model_data, keyword):
     column_mapping = {
         '63': '63Hz(dB / dB(A))', '125': '125Hz(dB / dB(A))', '250': '250Hz(dB / dB(A))',
@@ -38,9 +39,9 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (초록색 동력 그래프 추가 - Dual Y-Axis) 
+# 2. 메인 성능 맵 생성 (초록색 동력 곡선 + Area 1, 2 범위 저항 곡선 추가)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
-    active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)].sort_values(by=['rpm', 'CMH']) 
+    active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)].sort_values(by=['rpm', 'CMH'])
     rpms = sorted(active_df['rpm'].unique())
     
     fig, ax1 = plt.subplots(figsize=(10, 7))
@@ -53,7 +54,7 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
             # 1. 정압 곡선 (steelblue)
             ax1.plot(data['CMH'], data['Pa'], color='steelblue', linewidth=1.2, alpha=0.5)
             ax1.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=9, va='center')
-            # 2. 동력 곡선 (초록색 점선) 
+            # 2. 동력 곡선 (초록색 점선)
             ax2.plot(data['CMH'], data['power (kW)'], color='g', linewidth=1.0, linestyle=':', alpha=0.4)
             surge_x.append(data['CMH'].iloc[0])
             surge_y.append(data['Pa'].iloc[0])
@@ -62,18 +63,31 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
         ax1.plot(surge_x, surge_y, 'r--', linewidth=2.5, label='Surge Line')
         ax1.fill_betweenx(surge_y, 0, surge_x, color='red', alpha=0.07)
 
+    # [신규 기능] Area 1 및 Area 2 P-Q 저항곡선 시각화 통합
+    area_data = active_df[['rpm', 'Area 1(CMH)', 'Area 1(Pa)', 'Area 2(CMH)', 'Area 2(Pa)']].drop_duplicates().sort_values('rpm')
+    area1_x = [0] + area_data['Area 1(CMH)'].tolist()
+    area1_y = [0] + area_data['Area 1(Pa)'].tolist()
+    area2_x = [0] + area_data['Area 2(CMH)'].tolist()
+    area2_y = [0] + area_data['Area 2(Pa)'].tolist()
+    
+    ax1.plot(area1_x, area1_y, color='purple', linestyle='-.', linewidth=1.8, label='Area 1 Boundary')
+    ax1.plot(area2_x, area2_y, color='darkorange', linestyle='-.', linewidth=1.8, label='Area 2 Boundary')
+
+    # 시스템 저항 곡선
     x_max = max(user_cmh * 1.3, active_df['CMH'].max() if not active_df.empty else 1000)
     x_path = np.linspace(0, x_max, 100)
     k = user_pa / (user_cmh**2) if user_cmh != 0 else 0
     ax1.plot(x_path, k*(x_path**2), color='#1f77b4', linewidth=4, label='System Resistance')
     
+    # 설계점 마킹
     ax1.axvline(user_cmh, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.axhline(user_pa, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.scatter(user_cmh, user_pa, color='red', s=150, edgecolors='white', zorder=30)
 
+    # 차트 스케일 가이드
     ax1.set_xlim(0, x_max)
     ax1.set_ylim(0, max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000))
-    ax2.set_ylim(0, active_df['power (kW)'].max() * 1.3 if not active_df.empty else 100) 
+    ax2.set_ylim(0, active_df['power (kW)'].max() * 1.3 if not active_df.empty else 100)
     
     ax1.set_xlabel('Flow (CMH)', fontweight='bold')
     ax1.set_ylabel('Pressure (Pa)', color='steelblue', fontweight='bold')
@@ -82,7 +96,8 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     ax1.tick_params(axis='y', labelcolor='steelblue')
     ax2.tick_params(axis='y', labelcolor='g')
     ax1.set_title(f"Performance Map: {selected_model}", fontsize=15, fontweight='bold')
-    ax1.grid(True, linestyle=':', alpha=0.5); ax1.legend(loc='upper left')
+    ax1.grid(True, linestyle=':', alpha=0.5)
+    ax1.legend(loc='upper left')
     
     plt.tight_layout()
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=200, bbox_inches='tight'); plt.close(fig)
@@ -139,12 +154,12 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
 
     p.setFont("Helvetica-Bold", 12); p.drawString(50, h-245, "[2] Design & Performance")
     p.setFont("Helvetica", 10.5)
-    p.drawString(65, h-270, f"Selected Model : {model_data['model_name']}") 
-    p.drawString(65, h-290, f"Operating Speed : {int(model_data['rpm'])} RPM") 
+    p.drawString(65, h-270, f"Selected Model : {model_data['model_name']}")
+    p.drawString(65, h-290, f"Operating Speed : {int(model_data['rpm'])} RPM")
     p.drawString(65, h-310, f"Design Flow : {d_point['cmh']:,} CMH / Design Pressure : {d_point['pa']:,} Pa")
     
-    p_fan = model_data.get('power (kW)', 'N/A') 
-    eff = model_data.get('total efficiency (%)', 'N/A') 
+    p_fan = model_data.get('power (kW)', 'N/A')
+    eff = model_data.get('total efficiency (%)', 'N/A')
     p.drawString(65, h-330, f"Absorbed Power (P fan) : {p_fan} kW / Total Efficiency : {eff}%")
 
     chart_buf.seek(0); p.drawImage(ImageReader(chart_buf), 50, h-750, width=500, height=380)
@@ -158,7 +173,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     p.setLineWidth(0.5); p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 22, fill=1)
     p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 8)
     
-    labels = ['(dB / dB(A))', '63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', 'Total'] 
+    labels = ['(dB / dB(A))', '63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', 'Total']
     col_widths = [75] + [46.6]*9
     
     curr_x = 50
@@ -192,7 +207,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.1.3")
+    with c2: st.title("루트에어 선정 시스템 V8.2.0")
     
     st.divider()
     
@@ -209,17 +224,16 @@ if df is not None:
     col_1, col_2, col_3 = st.columns(3)
     u_cmh = col_1.number_input("Design Flow (CMH)", value=115000)
     u_pa = col_2.number_input("Design Pressure (Pa)", value=2100)
-    selected_model = col_3.selectbox("Select Model", df['model_name'].unique()) 
+    selected_model = col_3.selectbox("Select Model", df['model_name'].unique())
     
-    # [버그 완전 소탕] 사용자가 입력한 운전점(풍량, 정압)과 거리 오차가 가장 적은 최적의 RPM 실가동 행을 동적으로 연동합니다.
-    valid_df = df[(df['model_name'] == selected_model) & (df['rpm'] > 0)].copy() 
+    # 설계 운전점과의 거리가 가장 가까운 유효 고속 데이터 자동 연동
+    valid_df = df[(df['model_name'] == selected_model) & (df['rpm'] > 0)].copy()
     if not valid_df.empty:
-        # 설계 운전점과의 오차가 가장 적은 최적의 행 계산 (유클리드 거리 기반 최적 스케일링 가중치 적용)
         valid_df['distance'] = ((valid_df['CMH'] - u_cmh) ** 2) + ((valid_df['Pa'] - u_pa) ** 2) * 50
         best_row_index = valid_df['distance'].idxmin()
         model_data = valid_df.loc[best_row_index]
     else:
-        model_data = df[df['model_name'] == selected_model].iloc[0] 
+        model_data = df[df['model_name'] == selected_model].iloc[0]
     
     chart_buf = create_master_chart(df, selected_model, u_cmh, u_pa)
     noise_buf = create_noise_chart(model_data)
@@ -231,4 +245,4 @@ if df is not None:
     pdf_file = create_final_pdf(p_info, model_data, chart_buf, noise_buf, {"cmh": u_cmh, "pa": u_pa})
     st.download_button("📥 Download Final Technical Report", pdf_file, f"Report_{p_info['project']}.pdf")
 else:
-    st.error("⚠️ 데이터 파일('fan_performance_map_full_sample_R2.csv')을 찾을 수 없습니다.")
+    st.error("⚠️ 데이터 파일('fan_performance_map_full_sample_R3_populated.csv')을 찾을 수 없습니다.")
