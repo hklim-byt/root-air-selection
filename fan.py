@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드 (1 RPM 마스터 파일 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.3.2", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.3.3", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -38,7 +38,7 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (Area 1, 2 수식 기반 실시간 포물선 렌더링 방식으로 버그 완전 해결)
+# 2. 메인 성능 맵 생성 (동력선 색상 및 선명도 강화)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)]
     
@@ -55,14 +55,14 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
             # 1. 정압 곡선 (steelblue)
             ax1.plot(data['CMH'], data['Pa'], color='steelblue', linewidth=1.2, alpha=0.5)
             ax1.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=9, va='center')
-            # 2. 동력 곡선 (초록색 점선)
-            ax2.plot(data['CMH'], data['power (kW)'], color='g', linewidth=1.0, linestyle=':', alpha=0.4)
+            # 2. [인쇄 품질 개선] 동력 곡선 색상을 진한 초록(darkgreen)으로 변경하고 선 종류를 파선(--)으로 뚜렷하게 보정
+            ax2.plot(data['CMH'], data['power (kW)'], color='darkgreen', linewidth=1.2, linestyle='--', alpha=0.7)
 
     # 차트 스케일 상한선 계산
     x_max = max(user_cmh * 1.3, active_df['CMH'].max() if not active_df.empty else 1000)
     y_max = max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000)
 
-    # [버그 완전 소탕] 파일 안의 쪼개진 데이터에 의존하지 않고 고유 저항 상수(k1, k2)를 직접 정의하여 무한 곡선을 빌드합니다.
+    # 고유 저항 상수(k1, k2) 정의하여 무한 곡선 빌드
     k1 = 2100 / (97500 ** 2) # Area 1 기준점 기반 (1050 RPM)
     k2 = 400 / (75000 ** 2)  # Area 2 기준점 기반 (550 RPM)
 
@@ -75,7 +75,7 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     ax1.plot(x_contour, y_area1, color='purple', linestyle='-.', linewidth=2.0, label='Area 1 Boundary')
     ax1.plot(x_contour, y_area2, color='darkorange', linestyle='-.', linewidth=2.0, label='Area 2 Boundary')
 
-    # [V8.2.2 양식 완벽 구현] Area 1 위쪽 천장 및 Area 2 아래쪽 바닥 영역을 분홍색 바탕으로 선명하게 마킹
+    # Area 1 위쪽 천장 및 Area 2 아래쪽 바닥 영역을 분홍색 바탕으로 마킹
     ax1.fill_between(x_contour, 0, y_area2, color='pink', alpha=0.12, zorder=0, label='Out of Bounds (Pink)')
     ax1.fill_between(x_contour, y_area1, y_max * 2, color='pink', alpha=0.12, zorder=0)
 
@@ -95,10 +95,10 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     
     ax1.set_xlabel('Flow (CMH)', fontweight='bold')
     ax1.set_ylabel('Pressure (Pa)', color='steelblue', fontweight='bold')
-    ax2.set_ylabel('Shaft Power (kW)', color='g', fontweight='bold')
+    ax2.set_ylabel('Shaft Power (kW)', color='darkgreen', fontweight='bold')
     
     ax1.tick_params(axis='y', labelcolor='steelblue')
-    ax2.tick_params(axis='y', labelcolor='g')
+    ax2.tick_params(axis='y', labelcolor='darkgreen')
     ax1.set_title(f"Performance Map: {selected_model}", fontsize=15, fontweight='bold')
     ax1.grid(True, linestyle=':', alpha=0.5)
     ax1.legend(loc='upper left')
@@ -213,7 +213,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.3.2")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.3.3")
     
     st.divider()
     
