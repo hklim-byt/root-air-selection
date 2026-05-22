@@ -10,8 +10,8 @@ from io import BytesIO
 import numpy as np
 from datetime import datetime
 
-# 1. 페이지 설정 및 데이터 로드 (1 RPM 마스터 파일 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.3.3", layout="wide")
+# 1. 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
+st.set_page_config(page_title="루트에어 선정 시스템 V8.3.4", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -38,7 +38,7 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (동력선 색상 및 선명도 강화)
+# 2. 메인 성능 맵 생성 (동력선 색상 강화 및 좌측단 kW 수치 라벨 추가)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)]
     
@@ -52,11 +52,14 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     for rpm in visual_rpms:
         data = active_df[active_df['rpm'] == rpm].sort_values('CMH')
         if len(data) > 0:
-            # 1. 정압 곡선 (steelblue)
+            # 1. 정압 곡선 (steelblue) - 우측 끝에 RPM 표기
             ax1.plot(data['CMH'], data['Pa'], color='steelblue', linewidth=1.2, alpha=0.5)
             ax1.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=9, va='center')
-            # 2. [인쇄 품질 개선] 동력 곡선 색상을 진한 초록(darkgreen)으로 변경하고 선 종류를 파선(--)으로 뚜렷하게 보정
+            
+            # 2. 동력 곡선 (darkgreen) - 파선 형태
             ax2.plot(data['CMH'], data['power (kW)'], color='darkgreen', linewidth=1.2, linestyle='--', alpha=0.7)
+            # [신규 수정 적용] 동력선 좌측단(Area 1 방향, 그래프 상단 구역)에 고유 kW 수치를 정밀하게 기입합니다.
+            ax2.text(data['CMH'].iloc[0], data['power (kW)'].iloc[0], f'{data["power (kW)"].iloc[0]:.1f} kW ', color='darkgreen', fontsize=8, ha='right', va='center', alpha=0.8)
 
     # 차트 스케일 상한선 계산
     x_max = max(user_cmh * 1.3, active_df['CMH'].max() if not active_df.empty else 1000)
@@ -213,7 +216,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.3.3")
+    with c2: st.title("루트에어 선정 시스템 V8.3.4")
     
     st.divider()
     
