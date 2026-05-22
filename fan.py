@@ -10,8 +10,8 @@ from io import BytesIO
 import numpy as np
 from datetime import datetime
 
-# 1. 페이지 설정 및 데이터 로드 (정밀 1 RPM 마스터 파일 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.3.1", layout="wide")
+# 1. 페이지 설정 및 데이터 로드 (1 RPM 마스터 파일 연동)
+st.set_page_config(page_title="루트에어 선정 시스템 V8.3.2", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -38,14 +38,14 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (50 RPM 간격 곡선 드로잉 + Area 1/2 기준 수학적 포물선 분홍색 셰이딩)
+# 2. 메인 성능 맵 생성 (Area 1, 2 수식 기반 실시간 포물선 렌더링 방식으로 버그 완전 해결)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)]
     
     fig, ax1 = plt.subplots(figsize=(10, 7))
     ax2 = ax1.twinx() # 동력용 초록색 Y축 우측 배치
     
-    # 가독성을 위해 뷰어 선 표현은 50 RPM 단위로 샘플링하여 렌더링
+    # 뷰어 가독성을 위해 50 RPM 단위로 샘플링하여 렌더링
     all_rpms = sorted(active_df['rpm'].unique())
     visual_rpms = [rpm for rpm in all_rpms if rpm % 50 == 0 or rpm == max(all_rpms)]
     
@@ -58,36 +58,33 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
             # 2. 동력 곡선 (초록색 점선)
             ax2.plot(data['CMH'], data['power (kW)'], color='g', linewidth=1.0, linestyle=':', alpha=0.4)
 
-    # 마스터 데이터셋에서 상사의 법칙에 사용된 정확한 k 저항 계수 역산출
-    valid_area1 = active_df[active_df['Area 1(CMH)'] > 0]
-    k1 = valid_area1['Area 1(Pa)'].iloc[0] / (valid_area1['Area 1(CMH)'].iloc[0] ** 2) if not valid_area1.empty else 2100 / (97500 ** 2)
-        
-    valid_area2 = active_df[active_df['Area 2(CMH)'] > 0]
-    k2 = valid_area2['Area 2(Pa)'].iloc[0] / (valid_area2['Area 2(CMH)'].iloc[0] ** 2) if not valid_area2.empty else 400 / (75000 ** 2)
-
-    # 제한 범위 스케일 가이드
+    # 차트 스케일 상한선 계산
     x_max = max(user_cmh * 1.3, active_df['CMH'].max() if not active_df.empty else 1000)
     y_max = max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000)
 
-    # 1 RPM 세밀화에 맞춰 전체 가로 폭에 밀착하는 수학적 연속 포물선 궤적 수립
-    x_contour = np.linspace(0, x_max, 250)
+    # [버그 완전 소탕] 파일 안의 쪼개진 데이터에 의존하지 않고 고유 저항 상수(k1, k2)를 직접 정의하여 무한 곡선을 빌드합니다.
+    k1 = 2100 / (97500 ** 2) # Area 1 기준점 기반 (1050 RPM)
+    k2 = 400 / (75000 ** 2)  # Area 2 기준점 기반 (550 RPM)
+
+    # 가로축 끝까지 밀착하는 부드러운 고해상도 수학적 궤적 수립
+    x_contour = np.linspace(0, x_max, 300)
     y_area1 = k1 * (x_contour ** 2)
     y_area2 = k2 * (x_contour ** 2)
     
-    # Area 1(보라색) 및 Area 2(주황색) 경계 곡선 제도
-    ax1.plot(x_contour, y_area1, color='purple', linestyle='-.', linewidth=1.8, label='Area 1 Boundary')
-    ax1.plot(x_contour, y_area2, color='darkorange', linestyle='-.', linewidth=1.8, label='Area 2 Boundary')
+    # Area 1(보라색) 및 Area 2(주황색) 경계 곡선 플로팅
+    ax1.plot(x_contour, y_area1, color='purple', linestyle='-.', linewidth=2.0, label='Area 1 Boundary')
+    ax1.plot(x_contour, y_area2, color='darkorange', linestyle='-.', linewidth=2.0, label='Area 2 Boundary')
 
-    # [V8.2.2 동기화] Area 1 위쪽 천장 및 Area 2 아래쪽 바닥 영역을 고품격 분홍색 바탕으로 투명하게 마킹
-    ax1.fill_between(x_contour, 0, y_area2, color='pink', alpha=0.08, zorder=0, label='Out of Bounds (Pink)')
-    ax1.fill_between(x_contour, y_area1, y_max * 2, color='pink', alpha=0.08, zorder=0)
+    # [V8.2.2 양식 완벽 구현] Area 1 위쪽 천장 및 Area 2 아래쪽 바닥 영역을 분홍색 바탕으로 선명하게 마킹
+    ax1.fill_between(x_contour, 0, y_area2, color='pink', alpha=0.12, zorder=0, label='Out of Bounds (Pink)')
+    ax1.fill_between(x_contour, y_area1, y_max * 2, color='pink', alpha=0.12, zorder=0)
 
     # 사용자의 시스템 저항선 메인 커브
     x_path = np.linspace(0, x_max, 100)
     k = user_pa / (user_cmh**2) if user_cmh != 0 else 0
     ax1.plot(x_path, k*(x_path**2), color='#1f77b4', linewidth=4, label='System Resistance')
     
-    # 타겟 가이드 크로스헤어 및 점 마킹
+    # 설계 운전점 크로스 가이드선 및 점 마킹
     ax1.axvline(user_cmh, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.axhline(user_pa, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.scatter(user_cmh, user_pa, color='red', s=150, edgecolors='white', zorder=30)
@@ -140,7 +137,7 @@ def create_noise_chart(model_data):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (넘버링 제거된 깔끔한 규격 유지)
+# 4. PDF 리포트 생성
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4); w, h = A4
@@ -216,7 +213,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.3.1")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.3.2")
     
     st.divider()
     
@@ -235,7 +232,7 @@ if df is not None:
     u_pa = col_2.number_input("Design Pressure (Pa)", value=2100)
     selected_model = col_3.selectbox("Select Model", df['model_name'].unique())
     
-    # 1 RPM 정밀 행 연동 파서 구동
+    # 1 RPM 정밀 고속 연동 파서 구동
     valid_df = df[(df['model_name'] == selected_model) & (df['rpm'] > 0)].copy()
     if not valid_df.empty:
         valid_df['distance'] = ((valid_df['CMH'] - u_cmh) ** 2) + ((valid_df['Pa'] - u_pa) ** 2) * 50
