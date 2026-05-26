@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.3.5", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.3.6", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -38,7 +38,7 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (동력선 색상 강화 및 좌측단 kW 수치 라벨 추가)
+# 2. 메인 성능 맵 생성 (용어 변경: Air Flow 및 Static Pressure)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)]
     
@@ -95,8 +95,9 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     ax1.set_ylim(0, y_max)
     ax2.set_ylim(0, active_df['power (kW)'].max() * 1.3 if not active_df.empty else 100)
     
-    ax1.set_xlabel('Flow (CMH)', fontweight='bold')
-    ax1.set_ylabel('Pressure (Pa)', color='steelblue', fontweight='bold')
+    # [수정 요청 반영] 라벨 용어 변경
+    ax1.set_xlabel('Air Flow (CMH)', fontweight='bold')
+    ax1.set_ylabel('Static Pressure (Pa)', color='steelblue', fontweight='bold')
     ax2.set_ylabel('Shaft Power (kW)', color='darkgreen', fontweight='bold')
     
     ax1.tick_params(axis='y', labelcolor='steelblue')
@@ -215,7 +216,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.3.5")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.3.6")
     
     st.divider()
     
@@ -247,7 +248,7 @@ if df is not None:
     eff = model_data.get('total efficiency (%)', 'N/A')
     calculated_rpm = int(model_data['rpm'])
 
-    # [수정 적용] 사용자가 선정값을 변경하는 즉시 화면 상단에서 파악 가능한 스코어카드 대시보드 연동
+    # 실시간 계산 데이터 대시보드 스코어카드 표기
     st.write("") 
     res_col1, res_col2, res_col3 = st.columns(3)
     with res_col1:
