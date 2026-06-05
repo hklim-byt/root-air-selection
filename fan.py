@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.4.1", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.4.2", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -129,37 +129,37 @@ def create_noise_chart(model_data):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (첨부사진 속 우측 사각 박스 페이지 넘버링 규격 적용)
+# 4. PDF 리포트 생성 (사진 속 루트에어 오피셜 연락처 정보 및 사각 박스 넘버링 100% 매칭)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4); w, h = A4
     logo_path = "logo.png"
 
-    # [사진 동기화] 하단 데코레이션 및 사각 박스 넘버링 드로잉 함수
+    # [사진 100% 완벽 동기화] 하단 오피셜 데코레이션 가공 함수
     def draw_page_decorations(c, page_num):
         # 상단 헤더 라인
         c.setFont("Helvetica-Bold", 22); c.drawString(50, h-60, "Technical Selection Report")
         if os.path.exists(logo_path): c.drawImage(logo_path, w-180, h-82, width=130, preserveAspectRatio=True, mask='auto')
         c.setLineWidth(1.5); c.setStrokeColor(colors.black); c.line(50, h-90, w-50, h-90)
         
-        # 하단 상단 경계 미세 가이드선
+        # 하단 상단 경계 회색 가이드 미세선
         c.setLineWidth(0.5); c.setStrokeColor(colors.lightgrey); c.line(50, 55, w-50, 55)
         
-        # 1. 왼쪽 저작권 및 컨택 문구 출력
+        # 1. [실제 회사 정보 반영] 사진 속에 명시된 진짜 루트에어 공식 정보로 하드코딩
         c.setFillColor(colors.gray); c.setFont("Helvetica", 8)
-        footer_text = "Copyright © ROOT AIR Co., Ltd. All Rights Reserved.  |  Tel: +82-2-1234-5678  |  Email: contact@root-air.com"
+        footer_text = "Copyright © ROOT AIR Co., Ltd. All Rights Reserved.  |  Tel: +82-41-551-7895  |  Email: sales@root-air.co.kr"
         c.drawString(50, 38, footer_text)
         
-        # 2. [사진 완벽 동기화] 우측 하단 선으로 둘러싸인 정교한 페이지 사각 박스 구현
+        # 2. 우측 하단 선으로 둘러싸인 완벽한 크기의 사각 박스 넘버링 구현
         box_w, box_h = 45, 20
         box_x = w - 50 - box_w
         box_y = 28
         
-        # 테두리 사각형 그리기
+        # 테두리 사각형 렌더링
         c.setLineWidth(0.8); c.setStrokeColor(colors.gray)
         c.rect(box_x, box_y, box_w, box_h, fill=0)
         
-        # 사각 박스 정중앙에 'Page X' 텍스트 인치 매칭
+        # 사각 박스 한가운데에 'Page X' 텍스트 안착
         c.setFillColor(colors.black); c.setFont("Helvetica", 8.5)
         c.drawCentredString(box_x + (box_w / 2), box_y + 6.5, f"Page {page_num}")
 
@@ -227,7 +227,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.1")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.2")
     
     st.divider()
     
@@ -259,7 +259,7 @@ if df is not None:
     eff = model_data.get('total efficiency (%)', 'N/A')
     calculated_rpm = int(model_data['rpm'])
 
-    # 실시간 계산 데이터 대시보드 스코어카드 표기 (Tip Speed 제외, 원본 3열 구조 보존)
+    # 실시간 계산 데이터 대시보드 스코어카드 표기 (기존 3열 구조 보존)
     st.write("") 
     res_col1, res_col2, res_col3 = st.columns(3)
     with res_col1:
