@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.3.6", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.4.1", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -38,55 +38,45 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (용어 변경: Air Flow 및 Static Pressure)
+# 2. 메인 성능 맵 생성
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)]
     
     fig, ax1 = plt.subplots(figsize=(10, 7))
-    ax2 = ax1.twinx() # 동력용 초록색 Y축 우측 배치
+    ax2 = ax1.twinx()
     
-    # 뷰어 가독성을 위해 50 RPM 단위로 샘플링하여 렌더링
     all_rpms = sorted(active_df['rpm'].unique())
     visual_rpms = [rpm for rpm in all_rpms if rpm % 50 == 0 or rpm == max(all_rpms)]
     
     for rpm in visual_rpms:
         data = active_df[active_df['rpm'] == rpm].sort_values('CMH')
         if len(data) > 0:
-            # 1. 정압 곡선 (steelblue) - 우측 끝에 RPM 표기
             ax1.plot(data['CMH'], data['Pa'], color='steelblue', linewidth=1.2, alpha=0.5)
             ax1.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=9, va='center')
             
-            # 2. 동력 곡선 (darkgreen) - 파선 형태
             ax2.plot(data['CMH'], data['power (kW)'], color='darkgreen', linewidth=1.2, linestyle='--', alpha=0.7)
             ax2.text(data['CMH'].iloc[0], data['power (kW)'].iloc[0], f'{data["power (kW)"].iloc[0]:.1f} kW ', color='darkgreen', fontsize=8, ha='right', va='center', alpha=0.8)
 
-    # 차트 스케일 상한선 계산
     x_max = max(user_cmh * 1.3, active_df['CMH'].max() if not active_df.empty else 1000)
     y_max = max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000)
 
-    # 고유 저항 상수(k1, k2) 정의하여 무한 곡선 빌드
-    k1 = 2100 / (97500 ** 2) # Area 1 기준점 기반 (1050 RPM)
-    k2 = 400 / (75000 ** 2)  # Area 2 기준점 기반 (550 RPM)
+    k1 = 2100 / (97500 ** 2) 
+    k2 = 400 / (75000 ** 2)  
 
-    # 가로축 끝까지 밀착하는 부드러운 고해상도 수학적 궤적 수립
     x_contour = np.linspace(0, x_max, 300)
     y_area1 = k1 * (x_contour ** 2)
     y_area2 = k2 * (x_contour ** 2)
     
-    # Area 1(보라색) 및 Area 2(주황색) 경계 곡선 플로팅
     ax1.plot(x_contour, y_area1, color='purple', linestyle='-.', linewidth=2.0, label='Area 1 Boundary')
     ax1.plot(x_contour, y_area2, color='darkorange', linestyle='-.', linewidth=2.0, label='Area 2 Boundary')
 
-    # Area 1 위쪽 천장 및 Area 2 아래쪽 바닥 영역을 분홍색 바탕으로 마킹
     ax1.fill_between(x_contour, 0, y_area2, color='pink', alpha=0.12, zorder=0, label='Out of Bounds (Pink)')
     ax1.fill_between(x_contour, y_area1, y_max * 2, color='pink', alpha=0.12, zorder=0)
 
-    # 사용자의 시스템 저항선 메인 커브
     x_path = np.linspace(0, x_max, 100)
     k = user_pa / (user_cmh**2) if user_cmh != 0 else 0
     ax1.plot(x_path, k*(x_path**2), color='#1f77b4', linewidth=4, label='System Resistance')
     
-    # 설계 운전점 크로스 가이드선 및 점 마킹
     ax1.axvline(user_cmh, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.axhline(user_pa, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.scatter(user_cmh, user_pa, color='red', s=150, edgecolors='white', zorder=30)
@@ -95,7 +85,6 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     ax1.set_ylim(0, y_max)
     ax2.set_ylim(0, active_df['power (kW)'].max() * 1.3 if not active_df.empty else 100)
     
-    # [수정 요청 반영] 라벨 용어 변경
     ax1.set_xlabel('Air Flow (CMH)', fontweight='bold')
     ax1.set_ylabel('Static Pressure (Pa)', color='steelblue', fontweight='bold')
     ax2.set_ylabel('Shaft Power (kW)', color='darkgreen', fontweight='bold')
@@ -140,20 +129,43 @@ def create_noise_chart(model_data):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성
+# 4. PDF 리포트 생성 (첨부사진 속 우측 사각 박스 페이지 넘버링 규격 적용)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4); w, h = A4
     logo_path = "logo.png"
 
-    def draw_header(c):
+    # [사진 동기화] 하단 데코레이션 및 사각 박스 넘버링 드로잉 함수
+    def draw_page_decorations(c, page_num):
+        # 상단 헤더 라인
         c.setFont("Helvetica-Bold", 22); c.drawString(50, h-60, "Technical Selection Report")
         if os.path.exists(logo_path): c.drawImage(logo_path, w-180, h-82, width=130, preserveAspectRatio=True, mask='auto')
-        c.setLineWidth(1.5); c.line(50, h-90, w-50, h-90)
+        c.setLineWidth(1.5); c.setStrokeColor(colors.black); c.line(50, h-90, w-50, h-90)
+        
+        # 하단 상단 경계 미세 가이드선
+        c.setLineWidth(0.5); c.setStrokeColor(colors.lightgrey); c.line(50, 55, w-50, 55)
+        
+        # 1. 왼쪽 저작권 및 컨택 문구 출력
+        c.setFillColor(colors.gray); c.setFont("Helvetica", 8)
+        footer_text = "Copyright © ROOT AIR Co., Ltd. All Rights Reserved.  |  Tel: +82-2-1234-5678  |  Email: contact@root-air.com"
+        c.drawString(50, 38, footer_text)
+        
+        # 2. [사진 완벽 동기화] 우측 하단 선으로 둘러싸인 정교한 페이지 사각 박스 구현
+        box_w, box_h = 45, 20
+        box_x = w - 50 - box_w
+        box_y = 28
+        
+        # 테두리 사각형 그리기
+        c.setLineWidth(0.8); c.setStrokeColor(colors.gray)
+        c.rect(box_x, box_y, box_w, box_h, fill=0)
+        
+        # 사각 박스 정중앙에 'Page X' 텍스트 인치 매칭
+        c.setFillColor(colors.black); c.setFont("Helvetica", 8.5)
+        c.drawCentredString(box_x + (box_w / 2), box_y + 6.5, f"Page {page_num}")
 
-    # 1페이지
-    draw_header(p)
-    p.setFont("Helvetica", 10.5)
+    # 1페이지 드로잉
+    draw_page_decorations(p, 1)
+    p.setFont("Helvetica", 10.5); p.setFillColor(colors.black)
     p.drawString(65, h-130, f"Date : {p_info['date']}")
     p.drawString(65, h-165, f"Project Name : {p_info['project']}")
     p.drawString(65, h-185, f"Customer : {p_info['customer']}")
@@ -169,16 +181,16 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     eff = model_data.get('total efficiency (%)', 'N/A')
     p.drawString(65, h-330, f"Absorbed Power (P fan) : {p_fan} kW / Total Efficiency : {eff}%")
 
-    chart_buf.seek(0); p.drawImage(ImageReader(chart_buf), 50, h-750, width=500, height=380)
-    p.drawCentredString(w/2, 40, "- Page 1 -")
+    chart_buf.seek(0); p.drawImage(ImageReader(chart_buf), 50, h-740, width=500, height=380)
     
-    # 2페이지
-    p.showPage(); draw_header(p)
-    noise_buf.seek(0); p.drawImage(ImageReader(noise_buf), 50, h-450, width=500, height=280)
+    # 2페이지 드로잉
+    p.showPage()
+    draw_page_decorations(p, 2)
+    p.setFont("Helvetica-Bold", 12); p.setFillColor(colors.black); p.drawString(50, h-120, "Acoustic Analysis")
     
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-120, "Acoustic Analysis")
+    noise_buf.seek(0); p.drawImage(ImageReader(noise_buf), 50, h-430, width=500, height=280)
     
-    table_y = h-520
+    table_y = h-490
     p.setLineWidth(0.5); p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 22, fill=1)
     p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 8)
     
@@ -206,7 +218,6 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
         curr_x += w_val
     p.line(545, table_y, 545, table_y + 44)
 
-    p.drawCentredString(w/2, 40, "- Page 2 -")
     p.showPage(); p.save(); buffer.seek(0)
     return buffer
 
@@ -216,7 +227,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.3.6")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.1")
     
     st.divider()
     
@@ -248,7 +259,7 @@ if df is not None:
     eff = model_data.get('total efficiency (%)', 'N/A')
     calculated_rpm = int(model_data['rpm'])
 
-    # 실시간 계산 데이터 대시보드 스코어카드 표기
+    # 실시간 계산 데이터 대시보드 스코어카드 표기 (Tip Speed 제외, 원본 3열 구조 보존)
     st.write("") 
     res_col1, res_col2, res_col3 = st.columns(3)
     with res_col1:
