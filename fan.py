@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 
 # 1. 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.4.2", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.4.3", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -129,13 +129,12 @@ def create_noise_chart(model_data):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (사진 속 루트에어 오피셜 연락처 정보 및 사각 박스 넘버링 100% 매칭)
+# 4. PDF 리포트 생성 (사용자 기입 실제 루트에어 정보 및 사각 박스 넘버링 동기화)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4); w, h = A4
     logo_path = "logo.png"
 
-    # [사진 100% 완벽 동기화] 하단 오피셜 데코레이션 가공 함수
     def draw_page_decorations(c, page_num):
         # 상단 헤더 라인
         c.setFont("Helvetica-Bold", 22); c.drawString(50, h-60, "Technical Selection Report")
@@ -145,9 +144,9 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
         # 하단 상단 경계 회색 가이드 미세선
         c.setLineWidth(0.5); c.setStrokeColor(colors.lightgrey); c.line(50, 55, w-50, 55)
         
-        # 1. [실제 회사 정보 반영] 사진 속에 명시된 진짜 루트에어 공식 정보로 하드코딩
+        # 1. [완벽 동기화] 사용자님이 직접 기입해주신 100% 진짜 루트에어 정보 입력
         c.setFillColor(colors.gray); c.setFont("Helvetica", 8)
-        footer_text = "Copyright © ROOT AIR Co., Ltd. All Rights Reserved.  |  Tel: +82-41-551-7895  |  Email: sales@root-air.co.kr"
+        footer_text = "Copyright © RootAir ALL RIGHTS RESERVED. | Tel: +82-02-2082-7654 | Email: rootair@rootair.co.kr"
         c.drawString(50, 38, footer_text)
         
         # 2. 우측 하단 선으로 둘러싸인 완벽한 크기의 사각 박스 넘버링 구현
@@ -227,7 +226,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.2")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.3")
     
     st.divider()
     
