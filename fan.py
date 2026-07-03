@@ -37,7 +37,7 @@ else:
     FONT_NAME = 'Helvetica'
 
 # 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.5.1", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.5.2", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -283,14 +283,14 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.5.1")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.5.2")
     
     st.divider()
     
-    # [언어 스위칭 토글 바인딩]
+    # [사용자 요청 반영] 라디오 버튼 선택지를 심플하고 직관적이게 전면 변경 완료!
     lang_choice = st.radio(
         "🌐 **Select Report Language (보고서 출력 언어 선택)**", 
-        ["English Only (영문 전용 - 추천/깨짐원천방어)", "Korean Included (한글 결합)"], 
+        ["English Only", "Korean Included"], 
         horizontal=True
     )
     is_korean = True if "Korean" in lang_choice else False
