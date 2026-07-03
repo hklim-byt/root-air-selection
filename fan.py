@@ -7,7 +7,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics        # [신규] 폰트 등록 엔진
-from reportlab.pdfbase.ttregions import TTFont  # [신규] TrueType 폰트 파서
+from reportlab.pdfbase.ttfonts import TTFont  # [신규] TrueType 폰트 파서
 from io import BytesIO
 import numpy as np
 from datetime import datetime
