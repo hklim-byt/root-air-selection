@@ -12,18 +12,26 @@ from io import BytesIO
 import numpy as np
 from datetime import datetime
 
-# 1. 한글 폰트(맑은 고딕) 시스템 등록 프로세스
+# =========================================================================
+# [핵심 수정을 통한 한글 깨짐 원천 차단 프로세스]
+# =========================================================================
 font_path = "malgun.ttf"
 if os.path.exists(font_path):
-    # 'Malgun'이라는 이름으로 맑은 고딕 폰트를 정식 등록합니다.
+    # 1. ReportLab PDF 문서 본문용 한글 폰트 등록
     pdfmetrics.registerFont(TTFont('Malgun', font_path))
     FONT_NAME = 'Malgun'
+    
+    # 2. [차트 깨짐 해결] Matplotlib 이미지 엔진에도 '맑은 고딕' 폰트를 강제 매칭
+    from matplotlib import font_manager, rc
+    font_name = font_manager.FontProperties(fname=font_path).get_name()
+    rc('font', family=font_name)
+    # 마이너스 부호(-) 깨짐 방지 설정
+    plt.rcParams['axes.unicode_minus'] = False
 else:
-    # 폰트 파일이 없을 경우 최소한의 방어 코드로 기본 폰트 지정
     FONT_NAME = 'Helvetica'
 
 # 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.4.6", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.4.7", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -49,7 +57,7 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성
+# 2. 메인 성능 맵 생성 (차트 내부 폰트 최적화)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)]
     
@@ -79,15 +87,15 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     y_area1 = k1 * (x_contour ** 2)
     y_area2 = k2 * (x_contour ** 2)
     
-    ax1.plot(x_contour, y_area1, color='purple', linestyle='-.', linewidth=2.0, label='Area 1 Boundary')
-    ax1.plot(x_contour, y_area2, color='darkorange', linestyle='-.', linewidth=2.0, label='Area 2 Boundary')
+    ax1.plot(x_contour, y_area1, color='purple', linestyle='-.', linewidth=2.0, label='Area 1 경계')
+    ax1.plot(x_contour, y_area2, color='darkorange', linestyle='-.', linewidth=2.0, label='Area 2 경계')
 
-    ax1.fill_between(x_contour, 0, y_area2, color='pink', alpha=0.12, zorder=0, label='Out of Bounds (Pink)')
+    ax1.fill_between(x_contour, 0, y_area2, color='pink', alpha=0.12, zorder=0, label='운전 제한 구역 (Pink)')
     ax1.fill_between(x_contour, y_area1, y_max * 2, color='pink', alpha=0.12, zorder=0)
 
     x_path = np.linspace(0, x_max, 100)
     k = user_pa / (user_cmh**2) if user_cmh != 0 else 0
-    ax1.plot(x_path, k*(x_path**2), color='#1f77b4', linewidth=4, label='System Resistance')
+    ax1.plot(x_path, k*(x_path**2), color='#1f77b4', linewidth=4, label='계통 저항 곡선')
     
     ax1.axvline(user_cmh, color='red', linestyle='--', linewidth=1, alpha=0.4)
     ax1.axhline(user_pa, color='red', linestyle='--', linewidth=1, alpha=0.4)
@@ -97,13 +105,14 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
     ax1.set_ylim(0, y_max)
     ax2.set_ylim(0, active_df['power (kW)'].max() * 1.3 if not active_df.empty else 100)
     
-    ax1.set_xlabel('Air Flow (CMH)', fontweight='bold')
-    ax1.set_ylabel('Static Pressure (Pa)', color='steelblue', fontweight='bold')
-    ax2.set_ylabel('Shaft Power (kW)', color='darkgreen', fontweight='bold')
+    # 그래프 축 라벨 한글화 및 가독성 패치
+    ax1.set_xlabel('풍량 Air Flow (CMH)', fontweight='bold')
+    ax1.set_ylabel('정압 Static Pressure (Pa)', color='steelblue', fontweight='bold')
+    ax2.set_ylabel('축동력 Shaft Power (kW)', color='darkgreen', fontweight='bold')
     
     ax1.tick_params(axis='y', labelcolor='steelblue')
     ax2.tick_params(axis='y', labelcolor='darkgreen')
-    ax1.set_title(f"Performance Map: {selected_model}", fontsize=15, fontweight='bold')
+    ax1.set_title(f"성능 곡선 맵 (Performance Map): {selected_model}", fontsize=14, fontweight='bold')
     ax1.grid(True, linestyle=':', alpha=0.5)
     ax1.legend(loc='upper left')
     
@@ -113,9 +122,9 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
 
 # 3. 소음 통합 그래프 생성
 def create_noise_chart(model_data):
-    bands = ['63', '125', '250', '500', '1k', '2k', '4k', '8k', 'Total']
+    bands = ['63', '125', '250', '500', '1k', '2k', '4k', '8k', '총소음']
     db_vals, dba_vals = [], []
-    for b in bands:
+    for b in ['63', '125', '250', '500', '1k', '2k', '4k', '8k', 'Total']:
         db, dba = get_exact_noise_pair(model_data, b)
         try: 
             db_vals.append(float(db))
@@ -125,8 +134,8 @@ def create_noise_chart(model_data):
             dba_vals.append(0.0)
         
     fig, ax1 = plt.subplots(figsize=(10, 5))
-    ax1.bar(bands, db_vals, color='skyblue', alpha=0.6, label='Noise Level (dB)')
-    ax1.plot(bands, dba_vals, color='red', marker='o', linewidth=2, label='Weighting (dB(A))')
+    ax1.bar(bands, db_vals, color='skyblue', alpha=0.6, label='소음 레벨 Noise Level (dB)')
+    ax1.plot(bands, dba_vals, color='red', marker='o', linewidth=2, label='보정값 Weighting (dB(A))')
     
     max_val = max(max(db_vals), max(dba_vals)) if db_vals else 100
     ax1.set_ylim(0, max_val * 1.2)
@@ -135,28 +144,28 @@ def create_noise_chart(model_data):
         ax1.text(i, v1 + 1.5, f'{int(v1)}', ha='center', color='blue', fontsize=9, fontweight='bold')
         ax1.text(i, v2 - 4.5, f'{int(v2)}', ha='center', color='red', fontsize=9, fontweight='bold')
         
-    ax1.set_ylabel('Sound Level (dB / dB(A))', fontweight='bold')
-    ax1.set_title('Octave Band Analysis (including Total)', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('음압 레벨 Sound Level (dB / dB(A))', fontweight='bold')
+    ax1.set_title('주파수대역별 소음 분석 (Octave Band Analysis)', fontsize=13, fontweight='bold')
     ax1.legend(loc='upper right'); plt.tight_layout()
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (한글 마감 및 사각 박스 넘버링 동기화 완료)
+# 4. PDF 리포트 생성 (한글 폰트 전면 유효 래핑 및 타이틀 서식 수정)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4); w, h = A4
     logo_path = "logo.png"
 
     def draw_page_decorations(c, page_num):
-        # 상단 헤더 라인 (한글 폰트 적용)
-        c.setFont(f"{FONT_NAME}", 20); c.drawString(50, h-60, "송풍기 기술 선정 보고서 (Technical Report)")
+        # 상단 헤더 라인 (순수 한글 크기 서식 지정으로 충돌 방지)
+        c.setFont(f"{FONT_NAME}", 18); c.drawString(50, h-60, "송풍기 기술 선정 보고서")
         if os.path.exists(logo_path): c.drawImage(logo_path, w-180, h-82, width=130, preserveAspectRatio=True, mask='auto')
         c.setLineWidth(1.5); c.setStrokeColor(colors.black); c.line(50, h-90, w-50, h-90)
         
         # 하단 상단 경계 회색 가이드 미세선
         c.setLineWidth(0.5); c.setStrokeColor(colors.lightgrey); c.line(50, 55, w-50, 55)
         
-        # 1. 하단 저작권 및 사용자 입력 오피셜 회사 정보 (한글 깨짐 없음)
+        # 1. 하단 저작권 및 사용자 입력 오피셜 회사 정보
         c.setFillColor(colors.gray); c.setFont(f"{FONT_NAME}", 8)
         footer_text = "Copyright © RootAir ALL RIGHTS RESERVED. | Tel: +82-02-2082-7654 | Email: rootair@rootair.co.kr"
         c.drawString(50, 38, footer_text)
@@ -174,7 +183,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
         c.setFillColor(colors.black); c.setFont(f"{FONT_NAME}", 8.5)
         c.drawCentredString(box_x + (box_w / 2), box_y + 6.5, f"Page {page_num}")
 
-    # 1페이지 드로잉 (프로젝트 정보 한글 마감)
+    # 1페이지 드로잉 (맑은 고딕 가변 배정)
     draw_page_decorations(p, 1)
     p.setFont(f"{FONT_NAME}", 10.5); p.setFillColor(colors.black)
     p.drawString(65, h-130, f"발행 일자 (Date) : {p_info['date']}")
@@ -184,7 +193,6 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
 
     p.setFont(f"{FONT_NAME}", 12); p.drawString(50, h-245, "■ 설계 및 성능 사양 (Design & Performance)")
     p.setFont(f"{FONT_NAME}", 10.5)
-    # [오류 해결 완료] 변수 충돌을 발생시키는 바다코끼리(:=) 식을 안전한 문자열 포맷팅으로 전면 교체
     p.drawString(65, h-270, f"선정 모델 (Selected Model) : {model_data['model_name']}")
     p.drawString(65, h-290, f"계산 운전 회전수 (Operating Speed) : {int(model_data['rpm'])} RPM")
     p.drawString(65, h-310, f"설계 풍량 (Design Flow) : {d_point['cmh']:,} CMH / 설계 정압 (Static Pressure) : {d_point['pa']:,} Pa")
@@ -239,7 +247,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.6")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.7")
     
     st.divider()
     
@@ -281,6 +289,7 @@ if df is not None:
     
     st.divider()
     
+    # 폰트가 동기화된 상태에서 버퍼 생성
     chart_buf = create_master_chart(df, selected_model, u_cmh, u_pa)
     noise_buf = create_noise_chart(model_data)
     
