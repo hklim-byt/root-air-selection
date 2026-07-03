@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm  # [차트 패치] 폰트 매니저 직접 제어
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
@@ -12,25 +13,31 @@ from io import BytesIO
 import numpy as np
 from datetime import datetime
 
-# 1. 한글 폰트(맑은 고딕) 시스템 등록 및 방어 코드 세팅
+# =========================================================================
+# [글자 깨짐 방지 - 시스템 폰트 빌드 인프라]
+# =========================================================================
 font_path = "malgun.ttf"
 if os.path.exists(font_path):
     try:
+        # 1. ReportLab PDF 문서 본문용 폰트 등록
         pdfmetrics.registerFont(TTFont('Malgun', font_path))
         FONT_NAME = 'Malgun'
         
-        # Matplotlib 차트 엔진에도 폰트 동기화
-        from matplotlib import font_manager, rc
-        font_name = font_manager.FontProperties(fname=font_path).get_name()
-        rc('font', family=font_name)
-        plt.rcParams['axes.unicode_minus'] = False
+        # 2. [차트 깨짐 핵심 해결] Matplotlib 이미지 엔진에 맑은 고딕을 절대 경로로 강제 주입
+        font_prop = fm.FontProperties(fname=font_path)
+        font_name = font_prop.get_name()
+        
+        # Matplotlib 내부에 폰트 정식 등록 후 기본 폰트로 선언
+        fm.fontManager.addfont(font_path)
+        plt.rc('font', family=font_name)
+        plt.rcParams['axes.unicode_minus'] = False  # 마이너스 부호 깨짐 방지
     except:
         FONT_NAME = 'Helvetica'
 else:
     FONT_NAME = 'Helvetica'
 
 # 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.5.0", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.5.1", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -56,7 +63,7 @@ def get_exact_noise_pair(model_data, keyword):
         return val, val
     return "0", "0"
 
-# 2. 메인 성능 맵 생성 (선택된 언어 가이드 반영)
+# 2. 메인 성능 맵 생성 (선택 언어 연동)
 def create_master_chart(all_df, selected_model, user_cmh, user_pa, is_korean):
     active_df = all_df[(all_df['model_name'] == selected_model) & (all_df['rpm'] > 0)]
     
@@ -160,27 +167,24 @@ def create_noise_chart(model_data, is_korean):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (언어 스위칭 엔진 장착 및 안전 폴백 구조 적용)
+# 4. PDF 리포트 생성 (정밀 래핑)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point, is_korean):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4); w, h = A4
     logo_path = "logo.png"
     
-    # 한국어 선택 상태이고 폰트가 사용 가능하면 Malgun, 아니면 Helvetica(영문 규격 백업) 강제 처리
     active_font = FONT_NAME if is_korean else 'Helvetica'
 
     def draw_page_decorations(c, page_num):
-        # 상단 대타이틀 맵 스위칭
         c.setFont(active_font, 18 if is_korean else 22)
-        title_text = "송풍기 기술 선정 보고서 (Technical Report)" if is_korean else "Technical Selection Report"
+        title_text = "송풍기 기술 선정 보고서" if is_korean else "Technical Selection Report"
         c.drawString(50, h-60, title_text)
         
         if os.path.exists(logo_path): c.drawImage(logo_path, w-180, h-82, width=130, preserveAspectRatio=True, mask='auto')
         c.setLineWidth(1.5); c.setStrokeColor(colors.black); c.line(50, h-90, w-50, h-90)
-        
         c.setLineWidth(0.5); c.setStrokeColor(colors.lightgrey); c.line(50, 55, w-50, 55)
         
-        # 하단 저작권 사양 (지정 문구 유지)
+        # 하단 저작권 사양 (지정 문구 완벽 유지)
         c.setFillColor(colors.gray); c.setFont(active_font, 8)
         footer_text = "Copyright © RootAir ALL RIGHTS RESERVED. | Tel: +82-02-2082-7654 | Email: rootair@rootair.co.kr"
         c.drawString(50, 38, footer_text)
@@ -195,7 +199,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point, is_korea
         c.setFillColor(colors.black); c.setFont(active_font, 8.5)
         c.drawCentredString(box_x + (box_w / 2), box_y + 6.5, f"Page {page_num}")
 
-    # 1페이지 기술 사양 매핑 스위칭
+    # 1페이지 기술 사양 매핑
     draw_page_decorations(p, 1)
     p.setFont(active_font, 10.5); p.setFillColor(colors.black)
     
@@ -228,7 +232,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point, is_korea
 
     chart_buf.seek(0); p.drawImage(ImageReader(chart_buf), 50, h-740, width=500, height=380)
     
-    # 2페이지 소음 해석 매핑 스위칭
+    # 2페이지 소음 해석 매핑
     p.showPage()
     draw_page_decorations(p, 2)
     sec_title2 = "■ 옥타브 밴드 소음 분석 (Acoustic Analysis)" if is_korean else "Acoustic Analysis"
@@ -279,11 +283,11 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.5.0")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.5.1")
     
     st.divider()
     
-    # [사용자 핵심 아이디어] 최상단 레이아웃에 언어 마스터 선택기 전면 배치
+    # [언어 스위칭 토글 바인딩]
     lang_choice = st.radio(
         "🌐 **Select Report Language (보고서 출력 언어 선택)**", 
         ["English Only (영문 전용 - 추천/깨짐원천방어)", "Korean Included (한글 결합)"], 
@@ -331,7 +335,7 @@ if df is not None:
     
     st.divider()
     
-    # 언어 선택 조건에 맞춰 차트와 소음 맵 동적 생성
+    # 설정 동기화 후 차트 빌드
     chart_buf = create_master_chart(df, selected_model, u_cmh, u_pa, is_korean)
     noise_buf = create_noise_chart(model_data, is_korean)
     
