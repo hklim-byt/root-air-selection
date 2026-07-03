@@ -6,8 +6,8 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.lib import colors
-from reportlab.pdfbase import pdfmetrics        # [신규] 폰트 등록 엔진
-from reportlab.pdfbase.ttfonts import TTFont  # [신규] TrueType 폰트 파서
+from reportlab.pdfbase import pdfmetrics        # 폰트 등록 엔진
+from reportlab.pdfbase.ttfonts import TTFont    # TrueType 폰트 파서
 from io import BytesIO
 import numpy as np
 from datetime import datetime
@@ -23,7 +23,7 @@ else:
     FONT_NAME = 'Helvetica'
 
 # 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.4.4", layout="wide")
+st.set_page_config(page_title="루트에어 선정 시스템 V8.4.6", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -141,7 +141,7 @@ def create_noise_chart(model_data):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (한글 깨짐 전면 수정 및 사각 박스 넘버링 동기화)
+# 4. PDF 리포트 생성 (한글 마감 및 사각 박스 넘버링 동기화 완료)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4); w, h = A4
@@ -156,7 +156,7 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
         # 하단 상단 경계 회색 가이드 미세선
         c.setLineWidth(0.5); c.setStrokeColor(colors.lightgrey); c.line(50, 55, w-50, 55)
         
-        # 1. 하단 저작권 및 실제 회사 연락처 정보 (한글 깨짐 없음)
+        # 1. 하단 저작권 및 사용자 입력 오피셜 회사 정보 (한글 깨짐 없음)
         c.setFillColor(colors.gray); c.setFont(f"{FONT_NAME}", 8)
         footer_text = "Copyright © RootAir ALL RIGHTS RESERVED. | Tel: +82-02-2082-7654 | Email: rootair@rootair.co.kr"
         c.drawString(50, 38, footer_text)
@@ -184,7 +184,8 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
 
     p.setFont(f"{FONT_NAME}", 12); p.drawString(50, h-245, "■ 설계 및 성능 사양 (Design & Performance)")
     p.setFont(f"{FONT_NAME}", 10.5)
-    p.drawString(65, h-270, f"선정 모델 (Selected Model) : {model_name_selected := model_data['model_name']}")
+    # [오류 해결 완료] 변수 충돌을 발생시키는 바다코끼리(:=) 식을 안전한 문자열 포맷팅으로 전면 교체
+    p.drawString(65, h-270, f"선정 모델 (Selected Model) : {model_data['model_name']}")
     p.drawString(65, h-290, f"계산 운전 회전수 (Operating Speed) : {int(model_data['rpm'])} RPM")
     p.drawString(65, h-310, f"설계 풍량 (Design Flow) : {d_point['cmh']:,} CMH / 설계 정압 (Static Pressure) : {d_point['pa']:,} Pa")
     
@@ -238,7 +239,7 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.4")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.6")
     
     st.divider()
     
