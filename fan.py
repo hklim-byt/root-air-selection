@@ -6,12 +6,24 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.lib import colors
+from reportlab.pdfbase import pdfmetrics        # [신규] 폰트 등록 엔진
+from reportlab.pdfbase.ttregions import TTFont  # [신규] TrueType 폰트 파서
 from io import BytesIO
 import numpy as np
 from datetime import datetime
 
-# 1. 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
-st.set_page_config(page_title="루트에어 선정 시스템 V8.4.3", layout="wide")
+# 1. 한글 폰트(맑은 고딕) 시스템 등록 프로세스
+font_path = "malgun.ttf"
+if os.path.exists(font_path):
+    # 'Malgun'이라는 이름으로 맑은 고딕 폰트를 정식 등록합니다.
+    pdfmetrics.registerFont(TTFont('Malgun', font_path))
+    FONT_NAME = 'Malgun'
+else:
+    # 폰트 파일이 없을 경우 최소한의 방어 코드로 기본 폰트 지정
+    FONT_NAME = 'Helvetica'
+
+# 페이지 설정 및 데이터 로드 (1 RPM 마스터 데이터 연동)
+st.set_page_config(page_title="루트에어 선정 시스템 V8.4.4", layout="wide")
 
 def load_my_data():
     target_file = 'fan_performance_map_full_sample_1rpm_steps.csv' 
@@ -20,7 +32,6 @@ def load_my_data():
         except: return pd.read_csv(target_file, encoding='cp949')
     return None
 
-# 주파수별 고유 소음 데이터(dB / dB(A)) 1:1 정밀 매칭 함수
 def get_exact_noise_pair(model_data, keyword):
     column_mapping = {
         '63': '63Hz(dB / dB(A))', '125': '125Hz(dB / dB(A))', '250': '250Hz(dB / dB(A))',
@@ -55,7 +66,8 @@ def create_master_chart(all_df, selected_model, user_cmh, user_pa):
             ax1.text(data['CMH'].iloc[-1], data['Pa'].iloc[-1], f' {int(rpm)} RPM', color='steelblue', fontsize=9, va='center')
             
             ax2.plot(data['CMH'], data['power (kW)'], color='darkgreen', linewidth=1.2, linestyle='--', alpha=0.7)
-            ax2.text(data['CMH'].iloc[0], data['power (kW)'].iloc[0], f'{data["power (kW)"].iloc[0]:.1f} kW ', color='darkgreen', fontsize=8, ha='right', va='center', alpha=0.8)
+            data_first = data["power (kW)"].iloc[0]
+            ax2.text(data['CMH'].iloc[0], data_first, f'{data_first:.1f} kW ', color='darkgreen', fontsize=8, ha='right', va='center', alpha=0.8)
 
     x_max = max(user_cmh * 1.3, active_df['CMH'].max() if not active_df.empty else 1000)
     y_max = max(user_pa * 1.5, active_df['Pa'].max() if not active_df.empty else 1000)
@@ -129,23 +141,23 @@ def create_noise_chart(model_data):
     buf = BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); plt.close(fig)
     return buf
 
-# 4. PDF 리포트 생성 (사용자 기입 실제 루트에어 정보 및 사각 박스 넘버링 동기화)
+# 4. PDF 리포트 생성 (한글 깨짐 전면 수정 및 사각 박스 넘버링 동기화)
 def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4); w, h = A4
     logo_path = "logo.png"
 
     def draw_page_decorations(c, page_num):
-        # 상단 헤더 라인
-        c.setFont("Helvetica-Bold", 22); c.drawString(50, h-60, "Technical Selection Report")
+        # 상단 헤더 라인 (한글 폰트 적용)
+        c.setFont(f"{FONT_NAME}", 20); c.drawString(50, h-60, "송풍기 기술 선정 보고서 (Technical Report)")
         if os.path.exists(logo_path): c.drawImage(logo_path, w-180, h-82, width=130, preserveAspectRatio=True, mask='auto')
         c.setLineWidth(1.5); c.setStrokeColor(colors.black); c.line(50, h-90, w-50, h-90)
         
         # 하단 상단 경계 회색 가이드 미세선
         c.setLineWidth(0.5); c.setStrokeColor(colors.lightgrey); c.line(50, 55, w-50, 55)
         
-        # 1. [완벽 동기화] 사용자님이 직접 기입해주신 100% 진짜 루트에어 정보 입력
-        c.setFillColor(colors.gray); c.setFont("Helvetica", 8)
+        # 1. 하단 저작권 및 실제 회사 연락처 정보 (한글 깨짐 없음)
+        c.setFillColor(colors.gray); c.setFont(f"{FONT_NAME}", 8)
         footer_text = "Copyright © RootAir ALL RIGHTS RESERVED. | Tel: +82-02-2082-7654 | Email: rootair@rootair.co.kr"
         c.drawString(50, 38, footer_text)
         
@@ -159,41 +171,41 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
         c.rect(box_x, box_y, box_w, box_h, fill=0)
         
         # 사각 박스 한가운데에 'Page X' 텍스트 안착
-        c.setFillColor(colors.black); c.setFont("Helvetica", 8.5)
+        c.setFillColor(colors.black); c.setFont(f"{FONT_NAME}", 8.5)
         c.drawCentredString(box_x + (box_w / 2), box_y + 6.5, f"Page {page_num}")
 
-    # 1페이지 드로잉
+    # 1페이지 드로잉 (프로젝트 정보 한글 마감)
     draw_page_decorations(p, 1)
-    p.setFont("Helvetica", 10.5); p.setFillColor(colors.black)
-    p.drawString(65, h-130, f"Date : {p_info['date']}")
-    p.drawString(65, h-165, f"Project Name : {p_info['project']}")
-    p.drawString(65, h-185, f"Customer : {p_info['customer']}")
-    p.drawString(65, h-205, f"Engineer : {p_info['manager']}")
+    p.setFont(f"{FONT_NAME}", 10.5); p.setFillColor(colors.black)
+    p.drawString(65, h-130, f"발행 일자 (Date) : {p_info['date']}")
+    p.drawString(65, h-165, f"프로젝트명 (Project) : {p_info['project']}")
+    p.drawString(65, h-185, f"고객사명 (Customer) : {p_info['customer']}")
+    p.drawString(65, h-205, f"담당 엔지니어 (Engineer) : {p_info['manager']}")
 
-    p.setFont("Helvetica-Bold", 12); p.drawString(50, h-245, "Design & Performance")
-    p.setFont("Helvetica", 10.5)
-    p.drawString(65, h-270, f"Selected Model : {model_data['model_name']}")
-    p.drawString(65, h-290, f"Operating Speed : {int(model_data['rpm'])} RPM")
-    p.drawString(65, h-310, f"Design Flow : {d_point['cmh']:,} CMH / Design Pressure : {d_point['pa']:,} Pa")
+    p.setFont(f"{FONT_NAME}", 12); p.drawString(50, h-245, "■ 설계 및 성능 사양 (Design & Performance)")
+    p.setFont(f"{FONT_NAME}", 10.5)
+    p.drawString(65, h-270, f"선정 모델 (Selected Model) : {model_name_selected := model_data['model_name']}")
+    p.drawString(65, h-290, f"계산 운전 회전수 (Operating Speed) : {int(model_data['rpm'])} RPM")
+    p.drawString(65, h-310, f"설계 풍량 (Design Flow) : {d_point['cmh']:,} CMH / 설계 정압 (Static Pressure) : {d_point['pa']:,} Pa")
     
     p_fan = model_data.get('power (kW)', 'N/A')
     eff = model_data.get('total efficiency (%)', 'N/A')
-    p.drawString(65, h-330, f"Absorbed Power (P fan) : {p_fan} kW / Total Efficiency : {eff}%")
+    p.drawString(65, h-330, f"송풍기 소요동력 (Absorbed Power) : {p_fan} kW / 전효율 (Total Efficiency) : {eff}%")
 
     chart_buf.seek(0); p.drawImage(ImageReader(chart_buf), 50, h-740, width=500, height=380)
     
     # 2페이지 드로잉
     p.showPage()
     draw_page_decorations(p, 2)
-    p.setFont("Helvetica-Bold", 12); p.setFillColor(colors.black); p.drawString(50, h-120, "Acoustic Analysis")
+    p.setFont(f"{FONT_NAME}", 12); p.setFillColor(colors.black); p.drawString(50, h-120, "■ 옥타브 밴드 소음 분석 (Acoustic Analysis)")
     
     noise_buf.seek(0); p.drawImage(ImageReader(noise_buf), 50, h-430, width=500, height=280)
     
     table_y = h-490
     p.setLineWidth(0.5); p.setFillColor(colors.lightgrey); p.rect(50, table_y, 495, 22, fill=1)
-    p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 8)
+    p.setFillColor(colors.black); p.setFont(f"{FONT_NAME}", 8)
     
-    labels = ['(dB / dB(A))', '63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', 'Total']
+    labels = ['구분 (dB/dB(A))', '63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', '총 소음']
     col_widths = [75] + [46.6]*9
     
     curr_x = 50
@@ -201,9 +213,9 @@ def create_final_pdf(p_info, model_data, chart_buf, noise_buf, d_point):
         p.drawCentredString(curr_x + col_widths[i]/2, table_y + 7, label)
         curr_x += col_widths[i]
     
-    p.setFont("Helvetica", 7.5); table_y -= 22; p.rect(50, table_y, 495, 22, fill=0)
+    p.setFont(f"{FONT_NAME}", 7.5); table_y -= 22; p.rect(50, table_y, 495, 22, fill=0)
     curr_x = 50
-    p.drawCentredString(curr_x + col_widths[0]/2, table_y + 7, "Sound Level")
+    p.drawCentredString(curr_x + col_widths[0]/2, table_y + 7, "소음 측정값")
     curr_x += col_widths[0]
     
     for i, kw in enumerate(['63', '125', '250', '500', '1k', '2k', '4k', '8k', 'Total']):
@@ -226,15 +238,15 @@ if df is not None:
     c1, c2 = st.columns([1, 4])
     with c1:
         if os.path.exists("logo.png"): st.image("logo.png", width=150)
-    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.3")
+    with c2: st.title("루트에어 송풍기 선정 시스템 V8.4.4")
     
     st.divider()
     
     col_a, col_b, col_c, col_d = st.columns(4)
     p_date = col_a.date_input("Date", datetime.now())
-    p_name_raw = col_b.text_input("Project Name", placeholder="English Only")
-    cust_name_raw = col_c.text_input("Customer", placeholder="English Only")
-    mgr_name_raw = col_d.text_input("Manager", placeholder="English Only")
+    p_name_raw = col_b.text_input("Project Name", placeholder="English / 한글 모두 지원")
+    cust_name_raw = col_c.text_input("Customer", placeholder="English / 한글 모두 지원")
+    mgr_name_raw = col_d.text_input("Manager", placeholder="English / 한글 모두 지원")
     
     p_name = p_name_raw if p_name_raw.strip() != "" else "N/A"
     cust_name = cust_name_raw if cust_name_raw.strip() != "" else "N/A"
@@ -245,7 +257,6 @@ if df is not None:
     u_pa = col_2.number_input("Design Pressure (Pa)", value=2100)
     selected_model = col_3.selectbox("Select Model", df['model_name'].unique())
     
-    # 1 RPM 정밀 고속 연동 파서 구동
     valid_df = df[(df['model_name'] == selected_model) & (df['rpm'] > 0)].copy()
     if not valid_df.empty:
         valid_df['distance'] = ((valid_df['CMH'] - u_cmh) ** 2) + ((valid_df['Pa'] - u_pa) ** 2) * 50
@@ -258,7 +269,6 @@ if df is not None:
     eff = model_data.get('total efficiency (%)', 'N/A')
     calculated_rpm = int(model_data['rpm'])
 
-    # 실시간 계산 데이터 대시보드 스코어카드 표기 (기존 3열 구조 보존)
     st.write("") 
     res_col1, res_col2, res_col3 = st.columns(3)
     with res_col1:
